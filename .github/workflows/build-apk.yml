@@ -34,7 +34,14 @@ jobs:
         run: npm run build
 
       - name: Sync Capacitor Android
-        run: npx cap sync android
+        run: |
+          if [ ! -d "node_modules/@capacitor/android" ]; then
+            npm install @capacitor/android
+          fi
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+          npx cap sync android
 
       - name: Grant gradlew execution permission
         working-directory: ./android
