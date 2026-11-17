@@ -191,7 +191,6 @@ const [errorMsg, setErrorMsg] = useState<string | null>(null);
 const [currentTime, setCurrentTime] = useState(0);
 const [duration, setDuration] = useState(0);
 const [bufferedEnd, setBufferedEnd] = useState(0);
-// الافتراضي: وضع الفيديو (VOD) بشريط التقديم والتأخير إلا إذا ثبت أنه بث حي غير منتهي
 const [isLiveStream, setIsLiveStream] = useState(false);
 ​const [volumeLevel, setVolumeLevel] = useState(1);
 const [isMuted, setIsMuted] = useState(false);
@@ -225,8 +224,7 @@ startVal: number;
 side: 'left' | 'right' | null;
 moved: boolean;
 } | null>(null);
-​// إخفاء شريط الحالة العلوي + شريط التنقل السفلي للموبايل بالكامل
-const hideAllSystemBars = useCallback(async () => {
+​const hideAllSystemBars = useCallback(async () => {
 try {
 const capStatusBar = getCapacitorPlugin('StatusBar');
 if (capStatusBar?.setOverlaysWebView) {
@@ -248,9 +246,7 @@ document.documentElement
 .requestFullscreen?.({ navigationUI: 'hide' } as any)
 .catch(() => {});
 }
-} catch {
-// تجاهل
-}
+} catch {}
 }, []);
 ​const showAllSystemBars = useCallback(async () => {
 try {
@@ -263,16 +259,12 @@ getCapacitorPlugin('NavigationBar') || getCapacitorPlugin('AndroidFullScreen');
 if (capNavBar?.show) {
 await capNavBar.show().catch(() => {});
 }
-} catch {
-// تجاهل
-}
+} catch {}
 }, []);
-​// إبقاء شريط الموبايل مخفياً طول ما المشغل مفتوح في وضع ملء الشاشة
-useEffect(() => {
+​useEffect(() => {
 hideAllSystemBars();
 }, [isControlsVisible, isScreenLocked, hideAllSystemBars]);
-​// قفل الشاشة بالعرض عند الفتح وإرجاعها عند الإغلاق
-const lockLandscape = useCallback(async () => {
+​const lockLandscape = useCallback(async () => {
 if (!forceLandscape) return;
 try {
 const capOrientation = getCapacitorPlugin('ScreenOrientation');
@@ -281,9 +273,7 @@ await capOrientation.lock({ orientation: 'landscape' });
 } else if (typeof screen !== 'undefined' && (screen as any).orientation?.lock) {
 await (screen as any).orientation.lock('landscape').catch(() => {});
 }
-} catch {
-// تجاهل
-}
+} catch {}
 }, [forceLandscape]);
 ​const restoreOrientationAndBars = useCallback(async () => {
 try {
@@ -297,12 +287,9 @@ await capOrientation.unlock();
 } else if (typeof screen !== 'undefined' && (screen as any).orientation?.unlock) {
 (screen as any).orientation.unlock();
 }
-} catch {
-// تجاهل
-}
+} catch {}
 }, [showAllSystemBars]);
-​// إخفاء أي مشغل تضمين خلفي + تفعيل الوضع الأفقي وملء الشاشة
-useEffect(() => {
+​useEffect(() => {
 lockLandscape();
 hideAllSystemBars();
 ​const hiddenNodes: { el: HTMLElement; prevDisplay: string }[] = [];
@@ -348,8 +335,7 @@ videoRef.current.load();
 restoreOrientationAndBars();
 if (onClose) onClose();
 }, [onClose, restoreOrientationAndBars]);
-​// زر الرجوع في الموبايل
-useEffect(() => {
+​useEffect(() => {
 return registerBackInterceptor(() => {
 if (isScreenLocked) {
 setIsScreenLocked(false);
@@ -368,8 +354,7 @@ handleExitPlayer();
 return true;
 });
 }, [isScreenLocked, showQualitySheet, showQuickChannelSheet, handleExitPlayer]);
-​// تحليل الرابط وقائمة القنوات إن وجدت
-useEffect(() => {
+​useEffect(() => {
 const nextRaw = url || src || embedCode || '';
 const parsed = extractStreamSource(nextRaw);
 setActiveTitle(title);
@@ -408,8 +393,7 @@ setActiveUrl(parsed.streamUrl);
 if (channels.length > 0) setM3uChannels(channels);
 }
 }, [url, src, embedCode, title, subtitle, channels]);
-​// محرك تشغيل الفيديو (يدعم MP4, WebM, MKV, M3U8/HLS مع كشف المدة التلقائي)
-useEffect(() => {
+​useEffect(() => {
 if (Platform.OS !== 'web' || !videoRef.current || !activeUrl) return;
 const video = videoRef.current;
 let destroyed = false;
@@ -434,7 +418,6 @@ setIsBuffering(false);
 }
 })
 .catch(() => {
-// إذا منع المتصفح التشغيل بالصوت أول مرة، جرب كتم الصوت مؤقتاً ثم التشغيل
 video.muted = true;
 setIsMuted(true);
 video
@@ -470,7 +453,6 @@ attemptAutoPlay();
 ​const lower = activeUrl.toLowerCase();
 const isHlsManifest = lower.includes('.m3u8') || lower.includes('m3u8');
 ​if (!isHlsManifest) {
-// تشغيل مباشر وفوري لملفات الفيديو MP4 / WebM / MKV / روابط الفيديو المباشرة
 loadDirectVideo();
 } else {
 ensureHlsLibrary().then((Hls) => {
@@ -507,7 +489,6 @@ attemptAutoPlay();
 });
 ​hls.on(Hls.Events.LEVEL_LOADED, (_: any, data: any) => {
 if (!destroyed && data?.details) {
-// فقط لو البث لا نهائي يعتبر Live، أما الفيديوهات فتأخذ شريط التقديم
 const isEndlessLive =
 Boolean(data.details.live) && !Number.isFinite(data.details.totalduration);
 setIsLiveStream(isEndlessLive);
@@ -537,8 +518,7 @@ hlsRef.current = null;
 }
 };
 }, [activeUrl, reconnectTick, qualities]);
-​// إخفاء تلقائي للأزرار بعد 4 ثوانٍ أثناء التشغيل
-useEffect(() => {
+​useEffect(() => {
 if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
 if (
 isControlsVisible &&
@@ -576,8 +556,7 @@ video.pause();
 setIsPlaying(false);
 }
 }, []);
-​// معالجة اللمس على خلفية الفيديو فقط (بدون حجب الأزرار أبداً)
-const handleVideoSurfaceTap = useCallback(
+​const handleVideoSurfaceTap = useCallback(
 (clientX: number) => {
 lockLandscape();
 hideAllSystemBars();
@@ -608,8 +587,7 @@ setIsControlsVisible((prev) => !prev);
 },
 [isScreenLocked, lockLandscape, hideAllSystemBars, seekBySeconds, togglePlayPause]
 );
-​// إيماءات السحب للسطوع والصوت على خلفية الفيديو
-const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+​const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
 const touch = e.touches[0];
 if (!touch) return;
 const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 800;
@@ -718,8 +696,7 @@ onNext();
 seekBySeconds(10);
 }
 };
-​// التقديم والسحب على شريط وقت الفيديو
-const seekAtClientX = (clientX: number) => {
+​const seekAtClientX = (clientX: number) => {
 const video = videoRef.current;
 const bar = progressBarRef.current;
 if (!video || !bar) return;
@@ -732,8 +709,7 @@ const targetTime = ratio * effectiveDuration;
 video.currentTime = targetTime;
 setCurrentTime(targetTime);
 };
-​// شريط الفيديو (VOD) يظهر دائماً للفيديوهات وحتى قبل اكتمال تحميل المدة
-const showVodScrubber = !isLiveStream;
+​const showVodScrubber = !isLiveStream;
 const currentResize = RESIZE_MODES[resizeIndex];
 const currentQualityLabel = availableQualities[selectedQualityIdx]?.label || 'تلقائي';
 ​const progressFraction =
@@ -766,11 +742,9 @@ return list;
 ​return (
 <View nativeID="enjoy-player-root" style={styles.rootContainer}>
 <StatusBar hidden style="light" />
-​{/* 1. طبقة الفيديو + اللمس (تستقبل اللمس فقط في المساحات الفارغة بدون حجب الأزرار) */}
-{Platform.OS === 'web' && (
+​{Platform.OS === 'web' && (
 <div
 onClick={(e) => {
-// تجاهل النقرات لو جاءت من شريط التقدم أو أي زر
 if ((e.target as HTMLElement)?.closest('[data-player-control="true"]')) return;
 handleVideoSurfaceTap(e.clientX);
 }}
@@ -844,8 +818,7 @@ pointerEvents: 'none',
 />
 </div>
 )}
-​{/* مؤشر الصوت العائم (يمين الشاشة) */}
-{gestureVolumeHud !== null && (
+​{gestureVolumeHud !== null && (
 <View pointerEvents="none" style={styles.volumeHudBox}>
 {gestureVolumeHud === 0 ? (
 <VolumeX size={28} color={LIVE_RED} />
@@ -855,15 +828,13 @@ pointerEvents: 'none',
 <Text style={styles.hudPercentText}>{Math.round(gestureVolumeHud * 100)}%</Text>
 </View>
 )}
-​{/* مؤشر السطوع العائم (يسار الشاشة) */}
-{gestureBrightnessHud !== null && (
+​{gestureBrightnessHud !== null && (
 <View pointerEvents="none" style={styles.brightnessHudBox}>
 <Sun size={28} color={PRESTIGE_GOLD} />
 <Text style={styles.hudPercentText}>{Math.round(gestureBrightnessHud * 100)}%</Text>
 </View>
 )}
-​{/* إشعار التقديم والتأخير (+10 ثوانٍ / -10 ثوانٍ) */}
-{seekFeedbackText && (
+​{seekFeedbackText && (
 <View pointerEvents="none" style={styles.centerOverlay}>
 <View style={styles.seekPill}>
 {seekFeedbackText.includes('+') ? (
@@ -875,8 +846,7 @@ pointerEvents: 'none',
 </View>
 </View>
 )}
-​{/* إشعار تغيير أبعاد العرض */}
-{resizeToast && (
+​{resizeToast && (
 <View pointerEvents="none" style={styles.resizeToastWrapper}>
 <View style={styles.resizeToastPill}>
 <Maximize size={16} color={ELECTRIC_EMERALD} />
@@ -884,15 +854,13 @@ pointerEvents: 'none',
 </View>
 </View>
 )}
-​{/* مؤشر التحميل الذهبي */}
-{isBuffering && !errorMsg && (
+​{isBuffering && !errorMsg && (
 <View pointerEvents="none" style={styles.centerOverlay}>
 <ActivityIndicator size="large" color={PRESTIGE_GOLD} />
 <Text style={styles.connectingText}>جاري تحميل الفيديو...</Text>
 </View>
 )}
-​{/* تنبيه الخطأ وإعادة المحاولة */}
-{errorMsg && (
+​{errorMsg && (
 <View style={styles.centerOverlay}>
 <View style={styles.errorCard}>
 <AlertCircle size={42} color={LIVE_RED} />
@@ -910,8 +878,7 @@ setReconnectTick((n) => n + 1);
 </View>
 </View>
 )}
-​{/* زر إلغاء قفل الشاشة العائم */}
-{isScreenLocked && isUnlockPillVisible && (
+​{isScreenLocked && isUnlockPillVisible && (
 <View style={styles.unlockBottomWrapper}>
 <Pressable
 style={styles.unlockPill}
@@ -927,8 +894,7 @@ setIsControlsVisible(true);
 </Pressable>
 </View>
 )}
-​{/* 2. واجهة التحكم (pointerEvents="box-none" لكي لا تحجب اللمس عن الفيديو وفي نفس الوقت كل الأزرار تضغط فوراً) /}
-{isControlsVisible && !isScreenLocked && (
+​{isControlsVisible && !isScreenLocked && (
 <View
 pointerEvents="box-none"
 style={[
@@ -941,7 +907,6 @@ backgroundImage:
 : null,
 ]}
 >
-{/ الشريط العلوي */}
 <View pointerEvents="box-none" style={styles.topBar}>
 <Pressable style={styles.topIconBtn} onPress={handleExitPlayer}>
 <ArrowRight size={22} color="#FFF" />
@@ -1015,8 +980,7 @@ setIsControlsVisible(false);
 </Pressable>
 </View>
 </View>
-​{/* أزرار المنتصف (LTR: ترجيع 10ث - تشغيل/إيقاف ذهبي - تقديم 10ث) */}
-<View pointerEvents="box-none" style={styles.centerControlsRow}>
+​<View pointerEvents="box-none" style={styles.centerControlsRow}>
 <Pressable style={styles.seekCenterBtn} onPress={() => seekBySeconds(-10)}>
 <RotateCcw size={34} color="#FFF" />
 <Text style={styles.seek10TinyText}>10</Text>
@@ -1043,8 +1007,7 @@ onPress={togglePlayPause}
 <Text style={styles.seek10TinyText}>10</Text>
 </Pressable>
 </View>
-​{/* المنطقة السفلية: شريط الفيديوهات الذهبي القابل للسحب والضغط */}
-<View pointerEvents="box-none" style={styles.bottomArea}>
+​<View pointerEvents="box-none" style={styles.bottomArea}>
 {showVodScrubber ? (
 <View style={styles.vodScrubberRow}>
 <View style={styles.timeBadge}>
@@ -1153,8 +1116,7 @@ styles.liveStatusDot,
 </View>
 </View>
 )}
-​{/* صف الأزرار السفلي (السابق - إعادة التشغيل - قائمة المقاطع/القنوات - التالي) */}
-<View style={styles.bottomButtonsRow}>
+​<View style={styles.bottomButtonsRow}>
 <Pressable style={styles.navSkipBtn} onPress={handlePreviousItem}>
 <SkipBack size={28} color="#FFF" />
 </Pressable>
@@ -1191,8 +1153,7 @@ onPress={() => setShowQuickChannelSheet(true)}
 </View>
 </View>
 )}
-​{/* 3. قائمة المقاطع / القنوات السفلية */}
-{showQuickChannelSheet && (
+​{showQuickChannelSheet && (
 <View style={styles.sheetBackdrop}>
 <Pressable
 style={StyleSheet.absoluteFillObject}
@@ -1287,8 +1248,7 @@ isSelected && { color: PRESTIGE_GOLD, fontWeight: '800' },
 </View>
 </View>
 )}
-​{/* 4. قائمة إعدادات الجودة السفلية */}
-{showQualitySheet && (
+​{showQualitySheet && (
 <View style={styles.sheetBackdrop}>
 <Pressable
 style={StyleSheet.absoluteFillObject}
