@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Stack, useRouter, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
@@ -71,7 +71,7 @@ function AppGate() {
   const pathname = usePathname();
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [showForceUpdate, setShowForceUpdate] = useState(false);
-  const [exitPressTime, setExitPressTime] = useState<number | null>(null);
+  const lastRootBackPress = useRef(0);
 
   useEffect(() => {
     if (titles.length > 0) {
@@ -95,32 +95,26 @@ function AppGate() {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       const isRootRoute = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/index';
 
-      if (isRootRoute) {
-        const now = Date.now();
-        if (exitPressTime && now - exitPressTime < 2000) {
-          BackHandler.exitApp();
-          return true;
-        }
-
-        setExitPressTime(now);
-        Alert.alert(
-          t('exitPlayer'),
-          t('pressAgainToExit'),
-          [{ text: t('close'), style: 'cancel' }],
-        );
+      if (!isRootRoute) {
+        // Do not hand an unhandled Android back press to the OS (which terminates the app).
+        if (router.canGoBack?.()) router.back();
+        else router.replace('/(tabs)');
         return true;
       }
 
-      if (router.canGoBack?.()) {
-        router.back();
+      const now = Date.now();
+      if (now - lastRootBackPress.current < 2000) {
+        lastRootBackPress.current = 0;
+        Alert.alert(t('exitPlayer'), t('pressAgainToExit'), [{ text: t('close'), style: 'cancel' }]);
         return true;
       }
-
-      return false;
+      lastRootBackPress.current = now;
+      Alert.alert(t('exitPlayer'), t('pressAgainToExit'), [{ text: t('close'), style: 'cancel' }]);
+      return true;
     });
 
     return () => backHandler.remove();
-  }, [exitPressTime, pathname, router, t]);
+  }, [pathname, router, t]);
 
   if (status === 'loading') {
     return (

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, Settings, Volume2, VolumeX, X } from 'lucide-react-native';
+import { Capacitor } from '@capacitor/core';
+import { ScreenOrientation } from '@capacitor/screen-orientation';
+import { Lock, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, Settings, Unlock, Volume2, VolumeX, X } from 'lucide-react-native';
 import Hls from 'hls.js';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { useI18n } from '@/hooks/useI18n';
@@ -12,7 +14,6 @@ interface SportsTVPlayerProps {
   title: string;
   titleId: string;
   onClose: () => void;
-  /** Use a stream URL directly for live channels instead of treating it as an embed page. */
   directStreamUrl?: string;
   isLive?: boolean;
 }
@@ -21,6 +22,8 @@ interface QualityLevel {
   height: number;
   bitrate: number;
 }
+
+type VideoFit = 'contain' | 'cover' | 'fill';
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -36,10 +39,13 @@ function resumeKey(id: string) {
   return `sports-tv-resume-${id}`;
 }
 
-/** Full-screen player controls adapted for enjoy's Expo/Capacitor player runtime. */
+const videoFits: VideoFit[] = ['contain', 'cover', 'fill'];
+
+/** Full-screen HLS/VOD player shared by movies, episodes and live M3U channels. */
 export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStreamUrl, isLive = false }: SportsTVPlayerProps) {
   const { t } = useI18n();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const stageRef = useRef<View | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,13 +53,16 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [locked, setLocked] = useState(false);
   const [qualityMenuVisible, setQualityMenuVisible] = useState(false);
+  const [fitMenuVisible, setFitMenuVisible] = useState(false);
+  const [fit, setFit] = useState<VideoFit>('contain');
   const [levels, setLevels] = useState<QualityLevel[]>([]);
   const [selectedLevel, setSelectedLevel] = useState(-1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const disposeStream = useCallback(() => {
     hlsRef.current?.destroy();
@@ -61,7 +70,7 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
     const video = videoRef.current;
     if (video) {
       if (!isLive && titleId && video.currentTime > 5) {
-        try { window.localStorage.setItem(resumeKey(titleId), String(video.currentTime)); } catch {}
+        try { window.localStorage.setItem(resumeKey(titleId), String(video.currentTime)); } catch { /* storage is optional */ }
       }
       video.pause();
       video.removeAttribute('src');
@@ -69,18 +78,41 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
     }
   }, [isLive, titleId]);
 
+  const restoreOrientation = useCallback(() => {
+    if (Capacitor.isNativePlatform()) {
+      ScreenOrientation.unlock().catch(() => {});
+    } else if (Platform.OS === 'web' && typeof screen !== 'undefined') {
+      (screen.orientation as ScreenOrientation & { unlock?: () => void }).unlock?.();
+    }
+  }, []);
+
   const close = useCallback(() => {
     disposeStream();
+    restoreOrientation();
     onClose();
-  }, [disposeStream, onClose]);
+  }, [disposeStream, onClose, restoreOrientation]);
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      ScreenOrientation.lock({ orientation: 'landscape' }).catch(() => {});
+    } else if (Platform.OS === 'web' && typeof screen !== 'undefined') {
+      (screen.orientation as ScreenOrientation & { lock?: (orientation: string) => Promise<void> }).lock?.('landscape').catch(() => {});
+    }
+    return restoreOrientation;
+  }, [restoreOrientation]);
 
   useEffect(() => {
     const listener = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (locked) {
+        setLocked(false);
+        setControlsVisible(true);
+        return true;
+      }
       close();
       return true;
     });
     return () => listener.remove();
-  }, [close]);
+  }, [close, locked]);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,13 +121,9 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
       setError('');
       setLevels([]);
       setSelectedLevel(-1);
-      let sources: StreamSource[];
-      if (directStreamUrl) {
-        sources = [{ url: directStreamUrl, label: 'Auto' }];
-      } else {
-        const extracted = await extractStreamUrl(embedUrl);
-        sources = extracted.sources;
-      }
+      const sources: StreamSource[] = directStreamUrl
+        ? [{ url: directStreamUrl, label: 'Auto' }]
+        : (await extractStreamUrl(embedUrl)).sources;
       if (cancelled) return;
       if (!sources.length) {
         setError(t('configError'));
@@ -105,6 +133,8 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
       const video = videoRef.current;
       if (!video) return;
       video.setAttribute('playsinline', 'true');
+      video.setAttribute('webkit-playsinline', 'true');
+      video.on timeupdate = undefined;
       video.ontimeupdate = () => {
         setCurrentTime(video.currentTime || 0);
         if (video.buffered.length) setBuffered(video.buffered.end(video.buffered.length - 1));
@@ -121,9 +151,11 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
       if (!isLive && titleId) {
         try {
           const saved = Number(window.localStorage.getItem(resumeKey(titleId)) || 0);
-          if (saved > 0) video.onloadedmetadata = () => {
-            if (saved < video.duration - 10) video.currentTime = saved;
-          };
+          if (saved > 0) {
+            video.onloadedmetadata = () => {
+              if (saved < video.duration - 10) video.currentTime = saved;
+            };
+          }
         } catch { /* resume is optional */ }
       }
 
@@ -134,8 +166,7 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
           if (cancelled) return;
-          const available = data.levels.map((level) => ({ height: level.height || 0, bitrate: level.bitrate || 0 }));
-          setLevels(available);
+          setLevels(data.levels.map((level) => ({ height: level.height || 0, bitrate: level.bitrate || 0 })));
           setLoading(false);
           video.play().catch(() => {});
         });
@@ -150,6 +181,7 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
         });
         hls.loadSource(source);
       } else {
+        // Safari/iOS can play HLS natively; other supported direct streams use the same path.
         video.src = source;
         video.onloadedmetadata = () => {
           if (!cancelled) {
@@ -175,14 +207,15 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
 
   useEffect(() => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
-    if (controlsVisible && playing) {
+    if (!locked && controlsVisible && playing) {
       hideTimer.current = setTimeout(() => {
         setControlsVisible(false);
         setQualityMenuVisible(false);
+        setFitMenuVisible(false);
       }, 4500);
     }
     return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
-  }, [controlsVisible, playing]);
+  }, [controlsVisible, playing, locked]);
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -197,15 +230,17 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
     video.currentTime = Math.max(0, Math.min(video.currentTime + delta, video.duration || 0));
   };
 
-  const toggleFullscreen = () => {
+  const toggleFullscreen = async () => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-      setIsFullscreen(false);
-    } else {
-      document.documentElement.requestFullscreen?.().catch(() => {});
-      setIsFullscreen(true);
-    }
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      } else {
+        await (stageRef.current as any)?.requestFullscreen?.();
+        setIsFullscreen(true);
+      }
+    } catch { /* Fullscreen can require a user gesture or be unsupported. */ }
   };
 
   const chooseQuality = (index: number) => {
@@ -216,45 +251,54 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
     setQualityMenuVisible(false);
   };
 
+  const cycleFit = () => setFit((current) => videoFits[(videoFits.indexOf(current) + 1) % videoFits.length]);
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const bufferedProgress = duration > 0 ? Math.min(100, (buffered / duration) * 100) : 0;
+  const fitLabel = fit === 'contain' ? 'احتواء' : fit === 'cover' ? 'ملء' : 'تمديد';
 
   return (
     <View style={styles.overlay}>
       <StatusBar hidden style="light" />
-      <View style={styles.stage}>
-        <video ref={videoRef as any} style={styles.video as any} playsInline />
+      <View ref={stageRef as any} style={styles.stage}>
+        <video ref={videoRef as any} style={[styles.video as any, { objectFit: fit }]} playsInline />
         {!loading && !error && <Pressable style={styles.tapLayer} onPress={() => setControlsVisible((visible) => !visible)} />}
         {loading && <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /><Text style={styles.message}>{t('loading')}</Text></View>}
         {!!error && <View style={styles.center}><Text style={styles.error}>{error}</Text><Pressable style={styles.retry} onPress={() => { setError(''); setLoading(true); videoRef.current?.load(); }}><Text style={styles.retryText}>{t('retry')}</Text></Pressable></View>}
 
-        {controlsVisible && !loading && !error && <>
+        {locked && <View style={styles.lockOverlay} pointerEvents="box-none">
+          {controlsVisible && <Pressable style={styles.unlockButton} onPress={() => { setLocked(false); setControlsVisible(true); }}><Unlock size={22} color="#fff" /><Text style={styles.lockText}>{t('unlockPlayer')}</Text></Pressable>}
+        </View>}
+
+        {controlsVisible && !loading && !error && !locked && <>
           <View style={styles.topBar}>
-            <Pressable style={styles.iconButton} onPress={close}><X size={24} color="#fff" /></Pressable>
+            <Pressable accessibilityLabel={t('exitPlayer')} style={styles.iconButton} onPress={close}><X size={24} color="#fff" /></Pressable>
             <View style={styles.titleArea}><Text numberOfLines={1} style={styles.title}>{title}</Text><Text style={[styles.badge, isLive && styles.liveBadge]}>{isLive ? 'LIVE' : 'VOD'}</Text></View>
-            <Pressable style={styles.iconButton} onPress={() => setMuted((value) => { const next = !value; if (videoRef.current) videoRef.current.muted = next; return next; })}>{muted ? <VolumeX size={21} color="#fff" /> : <Volume2 size={21} color="#fff" />}</Pressable>
+            <Pressable accessibilityLabel={t('lockPlayer')} style={styles.iconButton} onPress={() => { setLocked(true); setQualityMenuVisible(false); setFitMenuVisible(false); }}><Lock size={20} color="#fff" /></Pressable>
+            <Pressable accessibilityLabel={muted ? t('unmute') : t('mute')} style={styles.iconButton} onPress={() => setMuted((value) => { const next = !value; if (videoRef.current) videoRef.current.muted = next; return next; })}>{muted ? <VolumeX size={21} color="#fff" /> : <Volume2 size={21} color="#fff" />}</Pressable>
           </View>
           <View style={styles.centerControls}>
-            {!isLive && <Pressable style={styles.seekButton} onPress={() => seek(-10)}><RotateCcw size={26} color="#fff" /><Text style={styles.seekLabel}>10</Text></Pressable>}
-            <Pressable style={styles.playButton} onPress={togglePlay}>{playing ? <Pause size={34} color="#fff" fill="#fff" /> : <Play size={34} color="#fff" fill="#fff" />}</Pressable>
-            {!isLive && <Pressable style={styles.seekButton} onPress={() => seek(10)}><RotateCw size={26} color="#fff" /><Text style={styles.seekLabel}>10</Text></Pressable>}
+            {!isLive && <Pressable accessibilityLabel={t('rewind10')} style={styles.seekButton} onPress={() => seek(-10)}><RotateCcw size={26} color="#fff" /><Text style={styles.seekLabel}>10</Text></Pressable>}
+            <Pressable accessibilityLabel={playing ? 'Pause' : 'Play'} style={styles.playButton} onPress={togglePlay}>{playing ? <Pause size={34} color="#fff" fill="#fff" /> : <Play size={34} color="#fff" fill="#fff" />}</Pressable>
+            {!isLive && <Pressable accessibilityLabel={t('forward10')} style={styles.seekButton} onPress={() => seek(10)}><RotateCw size={26} color="#fff" /><Text style={styles.seekLabel}>10</Text></Pressable>}
           </View>
           <View style={styles.bottomBar}>
-            {!isLive && <Pressable style={styles.progressTrack} onPress={(event: any) => {
+            {!isLive && <Pressable accessibilityLabel="Seek" style={styles.progressTrack} onPress={(event: any) => {
               const video = videoRef.current;
               const rect = event.currentTarget?.getBoundingClientRect?.();
-              if (video && rect?.width && duration) video.currentTime = ((event.nativeEvent?.locationX || 0) / rect.width) * duration;
+              if (video && rect?.width && duration) video.currentTime = Math.max(0, Math.min(1, (event.nativeEvent?.locationX || 0) / rect.width)) * duration;
             }}>
               <View style={[styles.bufferedTrack, { width: `${bufferedProgress}%` }]} /><View style={[styles.playedTrack, { width: `${progress}%` }]} />
             </Pressable>}
             <View style={styles.bottomControls}>
               {!isLive && <Text style={styles.timeText}>{formatTime(currentTime)} / {formatTime(duration)}</Text>}
               <View style={styles.spacer} />
-              {!!levels.length && <Pressable style={styles.qualityButton} onPress={() => setQualityMenuVisible((value) => !value)}><Settings size={17} color="#fff" /><Text style={styles.qualityText}>{selectedLevel >= 0 ? `${levels[selectedLevel]?.height}p` : 'Auto'}</Text></Pressable>}
+              <Pressable style={styles.qualityButton} onPress={() => { setFitMenuVisible((value) => !value); setQualityMenuVisible(false); }}><Text style={styles.qualityText}>{fitLabel}</Text></Pressable>
+              {!!levels.length && <Pressable style={styles.qualityButton} onPress={() => { setQualityMenuVisible((value) => !value); setFitMenuVisible(false); }}><Settings size={17} color="#fff" /><Text style={styles.qualityText}>{selectedLevel >= 0 ? `${levels[selectedLevel]?.height}p` : 'Auto'}</Text></Pressable>}
               <Pressable style={styles.iconButton} onPress={toggleFullscreen}>{isFullscreen ? <Minimize size={20} color="#fff" /> : <Maximize size={20} color="#fff" />}</Pressable>
             </View>
           </View>
           {qualityMenuVisible && <View style={styles.qualityMenu}><Pressable style={styles.qualityItem} onPress={() => chooseQuality(-1)}><Text style={styles.qualityText}>Auto</Text></Pressable>{levels.map((level, index) => <Pressable key={`${level.height}-${index}`} style={styles.qualityItem} onPress={() => chooseQuality(index)}><Text style={styles.qualityText}>{level.height ? `${level.height}p` : `${Math.round(level.bitrate / 1000)} kbps`}</Text></Pressable>)}</View>}
+          {fitMenuVisible && <View style={[styles.qualityMenu, styles.fitMenu]}>{videoFits.map((value) => <Pressable key={value} style={styles.qualityItem} onPress={() => { setFit(value); setFitMenuVisible(false); }}><Text style={styles.qualityText}>{value === 'contain' ? 'احتواء' : value === 'cover' ? 'ملء الشاشة' : 'تمديد'}</Text></Pressable>)}</View>}
         </>}
       </View>
     </View>
@@ -271,7 +315,7 @@ const styles = StyleSheet.create({
   error: { color: '#fff', fontSize: FontSize.md, textAlign: 'center' },
   retry: { backgroundColor: Colors.primary, borderRadius: Radius.md, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
   retryText: { color: '#fff', fontWeight: '700' },
-  topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingTop: Spacing.lg, paddingBottom: Spacing.md, backgroundColor: 'rgba(0,0,0,0.58)' },
+  topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingTop: Spacing.lg, paddingBottom: Spacing.md, backgroundColor: 'rgba(0,0,0,0.48)' },
   titleArea: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   title: { color: '#fff', fontSize: FontSize.md, fontWeight: '700', flexShrink: 1 },
   badge: { color: '#111', backgroundColor: '#d8b15a', overflow: 'hidden', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 3, fontSize: 9, fontWeight: '900' },
@@ -290,6 +334,10 @@ const styles = StyleSheet.create({
   spacer: { flex: 1 },
   qualityButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 7, borderRadius: Radius.sm, backgroundColor: 'rgba(255,255,255,0.15)' },
   qualityText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
-  qualityMenu: { position: 'absolute', right: Spacing.lg, bottom: 75, minWidth: 100, padding: 6, borderRadius: Radius.md, backgroundColor: '#171717' },
+  qualityMenu: { position: 'absolute', right: Spacing.lg, bottom: 75, minWidth: 100, maxHeight: 220, padding: 6, borderRadius: Radius.md, backgroundColor: '#171717' },
+  fitMenu: { right: 88 },
   qualityItem: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  lockOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center' },
+  unlockButton: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderRadius: Radius.lg, backgroundColor: 'rgba(0,0,0,0.72)' },
+  lockText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
 });
