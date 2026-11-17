@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Stack, useRouter, usePathname, SplashScreen } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { App } from '@capacitor/app';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { useFonts } from 'expo-font';
 import { WatchlistProvider } from '@/hooks/useWatchlist';
 import { I18nProvider, useI18n } from '@/hooks/useI18n';
 import { ConfigProvider, useConfig } from '@/hooks/useConfig';
 import { setTitles } from '@/data/titles';
+import { registerBackInterceptor, dispatchBackAction, exitAppCleanly, BackActionSource } from '@/utils/backNavigation';
 import {
   Inter_400Regular,
   Inter_600SemiBold,
@@ -73,15 +75,16 @@ function AppGate() {
   const [exitToastVisible, setExitToastVisible] = useState(false);
 
   const lastRootBackPress = useRef(0);
-  const lastHandledEventTime = useRef(0);
   const guardInstalledRef = useRef(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const pathnameRef = useRef(pathname);
   pathnameRef.current = pathname;
-
-  const showAnnouncementRef = useRef(showAnnouncement);
-  showAnnouncementRef.current = showAnnouncement;
+  const routerRef = useRef(router);
+  routerRef.current = router;
+  const announcementRef = useRef(showAnnouncement);
+  announcementRef.current = showAnnouncement;
+  const forceUpdateRef = useRef(showForceUpdate);
+  forceUpdateRef.current = showForceUpdate;
 
   useEffect(() => {
     if (titles.length > 0) setTitles(titles);
@@ -97,7 +100,7 @@ function AppGate() {
     }
   }, [status, config, announcementShown, setAnnouncementShown]);
 
-  // إعادة تفعيل طبقة حماية سجل المتصفح كلما عاد المستخدم للشاشة الرئيسية
+  // Keep a root history entry available so browser/WebView Back reaches our dispatcher.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     if (isRootRoute(pathname) && !guardInstalledRef.current) {
@@ -113,125 +116,90 @@ function AppGate() {
   }, [pathname]);
 
   useEffect(() => {
-    const showToastMessage = () => {
+    const showExitToast = () => {
       setExitToastVisible(true);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = setTimeout(() => {
-        setExitToastVisible(false);
-      }, 2000);
+      toastTimerRef.current = setTimeout(() => setExitToastVisible(false), 2000);
     };
 
-    const getCapacitorApp = () =>
-      typeof window !== 'undefined' ? (window as any)?.Capacitor?.Plugins?.App : null;
-
-    const exitApplication = () => {
-      setExitToastVisible(false);
-      const capApp = getCapacitorApp();
-      if (capApp?.exitApp) {
-        capApp.exitApp();
-      } else if (Platform.OS !== 'web') {
-        BackHandler.exitApp();
-      } else if (typeof window !== 'undefined') {
-        window.history.back();
+    const unregisterModal = registerBackInterceptor(() => {
+      if (announcementRef.current) {
+        setShowAnnouncement(false);
+        return true;
       }
-    };
+      // A force-update dialog cannot be dismissed; consume Back rather than leaving it behind.
+      if (forceUpdateRef.current) return true;
+      return false;
+    }, 1000);
 
-    const handleRootExitCheck = (rePushGuard: boolean) => {
+    const unregisterRoute = registerBackInterceptor(() => {
+      const currentPath = pathnameRef.current;
+      if (isRootRoute(currentPath)) return false;
+      if (routerRef.current.canGoBack()) routerRef.current.back();
+      else routerRef.current.replace('/');
+      return true;
+    }, 100);
+
+    const unregisterRoot = registerBackInterceptor(() => {
       const now = Date.now();
       if (now - lastRootBackPress.current <= 2000) {
         lastRootBackPress.current = 0;
-        exitApplication();
+        setExitToastVisible(false);
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        void exitAppCleanly();
       } else {
         lastRootBackPress.current = now;
-        showToastMessage();
-        if (rePushGuard && typeof window !== 'undefined') {
-          window.history.pushState(
-            { ...(window.history.state || {}), enjoyRootGuard: true },
-            '',
-            window.location.href
-          );
-          guardInstalledRef.current = true;
-        }
+        showExitToast();
       }
-    };
+      return true;
+    }, 0);
 
-    const handleHardwareBack = () => {
-      const now = Date.now();
-      if (now - lastHandledEventTime.current < 100) return true;
-      lastHandledEventTime.current = now;
-
-      // 1. إغلاق نافذة الإعلان إذا كانت مفتوحة
-      if (showAnnouncementRef.current) {
-        setShowAnnouncement(false);
-        return true;
-      }
-
-      // 2. الرجوع للخلف إذا لم يكن المستخدم في الشاشة الرئيسية
-      const currentPath = pathnameRef.current;
-      if (!isRootRoute(currentPath)) {
-        if (router.canGoBack()) {
-          router.back();
-        } else {
-          router.replace('/');
-        }
-        return true;
-      }
-
-      // 3. في الشاشة الرئيسية: تفعيل "اضغط مرة أخرى للخروج"
-      handleRootExitCheck(false);
+    const onNativeBack = () => {
+      dispatchBackAction('native');
       return true;
     };
+    const nativeBackSubscription = BackHandler.addEventListener('hardwareBackPress', onNativeBack);
 
-    // مستمع React Native للأندرويد الأصلي
-    const nativeBackSub = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
+    let disposed = false;
+    let removeCapacitorListener: (() => void) | undefined;
+    void App.addListener('backButton', () => {
+      dispatchBackAction('capacitor');
+    }).then((listener) => {
+      if (disposed) void listener.remove();
+      else removeCapacitorListener = () => { void listener.remove(); };
+    }).catch(() => {
+      // Capacitor App is unavailable in a regular web/React Native runtime.
+    });
 
-    // مستمع Capacitor Android (الأهم لتطبيقات APK المحولة بـ Capacitor)
-    let capBackListener: any = null;
-    const capApp = getCapacitorApp();
-    if (capApp?.addListener) {
-      capBackListener = capApp.addListener('backButton', () => {
-        handleHardwareBack();
-      });
-    }
-
-    // مستمع احتياطي لمتصفحات الموبايل العادية
     const onPopState = () => {
-      const now = Date.now();
-      if (now - lastHandledEventTime.current < 100) return;
-
-      if (showAnnouncementRef.current) {
-        lastHandledEventTime.current = now;
-        setShowAnnouncement(false);
+      // Restore the persistent root guard before route handling, so a second Back is intercepted too.
+      if (isRootRoute(pathnameRef.current) && typeof window !== 'undefined') {
         window.history.pushState(
           { ...(window.history.state || {}), enjoyRootGuard: true },
           '',
           window.location.href
         );
-        return;
+        guardInstalledRef.current = true;
       }
-
-      if (guardInstalledRef.current && isRootRoute(pathnameRef.current)) {
-        lastHandledEventTime.current = now;
-        guardInstalledRef.current = false;
-        handleRootExitCheck(true);
-      }
+      dispatchBackAction('popstate');
     };
-
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.addEventListener('popstate', onPopState);
-      document.addEventListener('backbutton', handleHardwareBack);
     }
 
     return () => {
-      nativeBackSub.remove();
-      if (capBackListener?.remove) capBackListener.remove();
+      disposed = true;
+      removeCapacitorListener?.();
+      nativeBackSubscription.remove();
+      unregisterModal();
+      unregisterRoute();
+      unregisterRoot();
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.removeEventListener('popstate', onPopState);
-        document.removeEventListener('backbutton', handleHardwareBack);
       }
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
-  }, [router]);
+  }, []);
 
   if (status === 'loading') {
     return (
