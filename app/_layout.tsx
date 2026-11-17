@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { useFonts } from 'expo-font';
@@ -15,6 +15,8 @@ import {
   Inter_900Black,
 } from '@expo-google-fonts/inter';
 import {
+  Alert,
+  BackHandler,
   StyleSheet,
   View,
   Text,
@@ -65,8 +67,11 @@ export default function RootLayout() {
 function AppGate() {
   const { config, titles, status, error, retry, announcementShown, setAnnouncementShown } = useConfig();
   const { t } = useI18n();
+  const router = useRouter();
+  const pathname = usePathname();
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [showForceUpdate, setShowForceUpdate] = useState(false);
+  const [exitPressTime, setExitPressTime] = useState<number | null>(null);
 
   useEffect(() => {
     if (titles.length > 0) {
@@ -85,6 +90,37 @@ function AppGate() {
       }
     }
   }, [status, config, announcementShown, setAnnouncementShown]);
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      const isRootRoute = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/index';
+
+      if (isRootRoute) {
+        const now = Date.now();
+        if (exitPressTime && now - exitPressTime < 2000) {
+          BackHandler.exitApp();
+          return true;
+        }
+
+        setExitPressTime(now);
+        Alert.alert(
+          t('exitPlayer'),
+          t('pressAgainToExit'),
+          [{ text: t('close'), style: 'cancel' }],
+        );
+        return true;
+      }
+
+      if (router.canGoBack?.()) {
+        router.back();
+        return true;
+      }
+
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [exitPressTime, pathname, router, t]);
 
   if (status === 'loading') {
     return (
