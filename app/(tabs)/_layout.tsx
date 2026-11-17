@@ -16,59 +16,59 @@ export default function TabLayout() {
           backgroundColor: Colors.surface,
           borderTopColor: Colors.border,
           borderTopWidth: 1,
-          height: 64,
+          height: 76,
           paddingBottom: 8,
-          paddingTop: 8,
+          paddingTop: 6,
+        },
+        tabBarItemStyle: {
+          flex: 1,
+          minWidth: 0,
+          paddingHorizontal: 2,
+          justifyContent: 'center',
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '600',
+          lineHeight: 18,
+          textAlign: 'center',
+          flexShrink: 1,
         },
+        tabBarAllowFontScaling: false,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: t('home'),
-          tabBarIcon: ({ size, color }) => (
-            <Home size={size} color={color} strokeWidth={2} />
-          ),
+          tabBarIcon: ({ size, color }) => <Home size={size} color={color} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
           title: t('search'),
-          tabBarIcon: ({ size, color }) => (
-            <Search size={size} color={color} strokeWidth={2} />
-          ),
+          tabBarIcon: ({ size, color }) => <Search size={size} color={color} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen
         name="movies"
         options={{
           title: t('browse'),
-          tabBarIcon: ({ size, color }) => (
-            <Clapperboard size={size} color={color} strokeWidth={2} />
-          ),
+          tabBarIcon: ({ size, color }) => <Clapperboard size={size} color={color} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen
         name="channels"
         options={{
           title: t('channels'),
-          tabBarIcon: ({ size, color }) => (
-            <Tv size={size} color={color} strokeWidth={2} />
-          ),
+          tabBarIcon: ({ size, color }) => <Tv size={size} color={color} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: t('profile'),
-          tabBarIcon: ({ size, color }) => (
-            <User size={size} color={color} strokeWidth={2} />
-          ),
+          tabBarIcon: ({ size, color }) => <User size={size} color={color} strokeWidth={2} />,
         }}
       />
     </Tabs>
