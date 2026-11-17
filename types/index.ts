@@ -1,17 +1,5 @@
 export type ContentType = 'movie' | 'series';
 
-export type Genre =
-  | 'Action'
-  | 'Drama'
-  | 'Comedy'
-  | 'Thriller'
-  | 'Sci-Fi'
-  | 'Horror'
-  | 'Romance'
-  | 'Documentary'
-  | 'Animation'
-  | 'Crime';
-
 export interface Episode {
   id: string;
   season: number;
@@ -20,6 +8,7 @@ export interface Episode {
   duration: number;
   description: string;
   thumbnail: string;
+  embedUrl: string;
 }
 
 export interface Title {
@@ -30,12 +19,12 @@ export interface Title {
   rating: number;
   quality: string;
   duration: number;
-  genres: Genre[];
+  genres: string[];
   description: string;
   poster: string;
   backdrop: string;
   logo?: string;
-  trailerUrl: string;
+  embedUrl: string;
   featured: boolean;
   trending: boolean;
   isNew: boolean;
@@ -44,10 +33,30 @@ export interface Title {
   director: string;
   country: string;
   language: string;
+  group: string;
 }
 
 export interface WatchlistItem {
   id: string;
   titleId: string;
   addedAt: number;
+}
+
+export interface RemoteConfig {
+  app_name: string;
+  app_icon: string;
+  app_version: string;
+  force_update: boolean;
+  update_url: string;
+  update_notes: string;
+  maintenance_mode: boolean;
+  maintenance_msg: string;
+  announcement: {
+    active: boolean;
+    title: string;
+    message: string;
+  };
+  channels_url: string;
+  movies_url: string;
+  stream_url: string;
 }
