@@ -1,43 +1,38 @@
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
+  TextInput,
+  Platform,
+} from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  RotateCw,
+  Lock,
+  Unlock,
+  Maximize,
+  Settings,
+  ArrowRight,
+  Volume2,
+  VolumeX,
+  Tv,
+  Search,
+  Check,
+  AlertCircle,
+  RefreshCw,
+  SkipBack,
+  SkipForward,
+  Sun,
+} from 'lucide-react-native';
+import { getCapacitorPlugin, registerBackInterceptor } from '@/utils/backNavigation';
 
-export function parseM3UPlaylist(rawText: string): M3UChannel[] {
-  const lines = rawText
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const parsed: M3UChannel[] = [];
-  let pendingName = '';
-  let pendingGroup = 'قنوات عامة';
-  let pendingLogo = '';
-
-  for (const line of lines) {
-    if (line.startsWith('#EXTINF:')) {
-      const groupMatch = line.match(/group-title="([^"]*)"/i);
-      const logoMatch = line.match(/tvg-logo="([^"]*)"/i);
-      const commaIdx = line.lastIndexOf(',');
-
-      pendingGroup = groupMatch?.[1]?.trim() || 'قنوات عامة';
-      pendingLogo = logoMatch?.[1]?.trim() || '';
-
-      pendingName =
-        commaIdx !== -1
-          ? line.slice(commaIdx + 1).trim()
-          : `قناة ${parsed.length + 1}`;
-
-    } else if (!line.startsWith('#') && /^https?:\/\//i.test(line)) {
-      parsed.push({
-        id: `ch_${parsed.length}_${Math.random().toString(36).slice(2, 7)}`,
-        name: pendingName || `قناة ${parsed.length + 1}`,
-        url: line,
-        group: pendingGroup,
-        logo: pendingLogo,
-      });
-
-      pendingName = '';
-      pendingGroup = 'قنوات عامة';
-      pendingLogo = '';
-    }
-  }
-
-  return parsed;
-}
+const PRESTIGE_GOLD = '#FFC72C';
+const PRESTIGE_GOLD_DARK = '#E6A800';
+const OBSIDIAN_SHEET = '#07080C';
