@@ -1,8 +1,11 @@
 import { Tabs } from 'expo-router';
 import { Home, Search, Clapperboard, Bookmark, User } from 'lucide-react-native';
 import { Colors } from '@/constants/theme';
+import { useI18n } from '@/hooks/useI18n';
 
 export default function TabLayout() {
+  const { t } = useI18n();
+
   return (
     <Tabs
       screenOptions={{
@@ -26,7 +29,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: t('home'),
           tabBarIcon: ({ size, color }) => (
             <Home size={size} color={color} strokeWidth={2} />
           ),
@@ -35,7 +38,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="search"
         options={{
-          title: 'Search',
+          title: t('search'),
           tabBarIcon: ({ size, color }) => (
             <Search size={size} color={color} strokeWidth={2} />
           ),
@@ -44,7 +47,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="movies"
         options={{
-          title: 'Browse',
+          title: t('browse'),
           tabBarIcon: ({ size, color }) => (
             <Clapperboard size={size} color={color} strokeWidth={2} />
           ),
@@ -53,7 +56,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="mylist"
         options={{
-          title: 'My List',
+          title: t('myList'),
           tabBarIcon: ({ size, color }) => (
             <Bookmark size={size} color={color} strokeWidth={2} />
           ),
@@ -62,7 +65,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: t('profile'),
           tabBarIcon: ({ size, color }) => (
             <User size={size} color={color} strokeWidth={2} />
           ),

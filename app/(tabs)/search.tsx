@@ -1,35 +1,44 @@
 import { useState, useMemo, useCallback } from 'react';
-import { ScrollView, StyleSheet, View, Text, TextInput, FlatList, ActivityIndicator } from 'react-native';
+import { ScrollView, StyleSheet, View, Text, TextInput, FlatList, ActivityIndicator, Pressable } from 'react-native';
 import { Search, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MovieCard } from '@/components/MovieCard';
 import { GenrePill } from '@/components/GenrePill';
 import { Colors, FontSize, Spacing, Radius } from '@/constants/theme';
-import { TITLES, ALL_GENRES } from '@/data/titles';
+import { useConfig } from '@/hooks/useConfig';
+import { useI18n } from '@/hooks/useI18n';
 import { Title } from '@/types';
 
 export default function SearchScreen() {
+  const { titles } = useConfig();
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const allGenres = useMemo(() => {
+    const genres = new Set<string>();
+    titles.forEach((t2) => t2.genres.forEach((g) => genres.add(g)));
+    return Array.from(genres);
+  }, [titles]);
+
   const results = useMemo(() => {
-    let list = TITLES;
+    let list = titles;
     if (activeGenre) {
-      list = list.filter((t) => t.genres.includes(activeGenre as never));
+      list = list.filter((t2) => t2.genres.includes(activeGenre));
     }
     if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          t.genres.some((g) => g.toLowerCase().includes(q)) ||
-          t.cast.some((c) => c.toLowerCase().includes(q)) ||
-          t.director.toLowerCase().includes(q)
+        (t2) =>
+          t2.title.toLowerCase().includes(q) ||
+          t2.genres.some((g) => g.toLowerCase().includes(q)) ||
+          (t2.cast || []).some((c) => c.toLowerCase().includes(q)) ||
+          (t2.director || '').toLowerCase().includes(q)
       );
     }
     return list;
-  }, [query, activeGenre]);
+  }, [query, activeGenre, titles]);
 
   const handleChange = useCallback((text: string) => {
     setLoading(true);
@@ -42,22 +51,22 @@ export default function SearchScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Search</Text>
+        <Text style={styles.title}>{t('search')}</Text>
       </View>
       <View style={styles.searchBar}>
         <Search size={20} color={Colors.textMuted} />
         <TextInput
           style={styles.input}
-          placeholder="Search movies, series, actors..."
+          placeholder={t('searchPlaceholder')}
           placeholderTextColor={Colors.textMuted}
           value={query}
           onChangeText={handleChange}
           autoCorrect={false}
         />
         {query.length > 0 && (
-          <PressableX onPress={() => setQuery('')}>
+          <Pressable onPress={() => setQuery('')}>
             <X size={18} color={Colors.textMuted} />
-          </PressableX>
+          </Pressable>
         )}
       </View>
       <ScrollView
@@ -65,8 +74,8 @@ export default function SearchScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.genreScroll}
       >
-        <GenrePill label="All" active={activeGenre === null} onPress={() => setActiveGenre(null)} />
-        {ALL_GENRES.map((g) => (
+        <GenrePill label={t('all')} active={activeGenre === null} onPress={() => setActiveGenre(null)} />
+        {allGenres.map((g) => (
           <GenrePill key={g} label={g} active={activeGenre === g} onPress={() => setActiveGenre(g)} />
         ))}
       </ScrollView>
@@ -76,8 +85,8 @@ export default function SearchScreen() {
         </View>
       ) : results.length === 0 ? (
         <View style={styles.centerContent}>
-          <Text style={styles.emptyTitle}>No results found</Text>
-          <Text style={styles.emptyText}>Try a different search or genre.</Text>
+          <Text style={styles.emptyTitle}>{t('noResults')}</Text>
+          <Text style={styles.emptyText}>{t('tryDifferent')}</Text>
         </View>
       ) : (
         <FlatList
@@ -94,12 +103,6 @@ export default function SearchScreen() {
       )}
     </SafeAreaView>
   );
-}
-
-import { Pressable } from 'react-native';
-
-function PressableX({ children, onPress }: { children: React.ReactNode; onPress: () => void }) {
-  return <Pressable onPress={onPress}>{children}</Pressable>;
 }
 
 const styles = StyleSheet.create({

@@ -4,30 +4,39 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MovieCard } from '@/components/MovieCard';
 import { GenrePill } from '@/components/GenrePill';
 import { Colors, FontSize, Spacing } from '@/constants/theme';
-import { TITLES, ALL_GENRES } from '@/data/titles';
+import { useConfig } from '@/hooks/useConfig';
+import { useI18n } from '@/hooks/useI18n';
 import { Title, ContentType } from '@/types';
 
 type Filter = 'all' | ContentType;
 
 export default function MoviesScreen() {
+  const { titles } = useConfig();
+  const { t } = useI18n();
   const [filter, setFilter] = useState<Filter>('all');
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
 
+  const allGenres = useMemo(() => {
+    const genres = new Set<string>();
+    titles.forEach((t2) => t2.genres.forEach((g) => genres.add(g)));
+    return Array.from(genres);
+  }, [titles]);
+
   const results = useMemo(() => {
-    let list = TITLES;
+    let list = titles;
     if (filter !== 'all') {
-      list = list.filter((t) => t.type === filter);
+      list = list.filter((t2) => t2.type === filter);
     }
     if (activeGenre) {
-      list = list.filter((t) => t.genres.includes(activeGenre as never));
+      list = list.filter((t2) => t2.genres.includes(activeGenre));
     }
     return list;
-  }, [filter, activeGenre]);
+  }, [filter, activeGenre, titles]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Browse</Text>
+        <Text style={styles.title}>{t('browse')}</Text>
       </View>
       <View style={styles.tabs}>
         {(['all', 'movie', 'series'] as Filter[]).map((f) => (
@@ -37,7 +46,7 @@ export default function MoviesScreen() {
             onPress={() => setFilter(f)}
           >
             <Text style={[styles.tabText, filter === f && styles.tabTextActive]}>
-              {f === 'all' ? 'All' : f === 'movie' ? 'Movies' : 'Series'}
+              {f === 'all' ? t('all') : f === 'movie' ? t('movies') : t('series')}
             </Text>
           </Pressable>
         ))}
@@ -47,14 +56,14 @@ export default function MoviesScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.genreScroll}
       >
-        <GenrePill label="All Genres" active={activeGenre === null} onPress={() => setActiveGenre(null)} />
-        {ALL_GENRES.map((g) => (
+        <GenrePill label={t('allGenres')} active={activeGenre === null} onPress={() => setActiveGenre(null)} />
+        {allGenres.map((g) => (
           <GenrePill key={g} label={g} active={activeGenre === g} onPress={() => setActiveGenre(g)} />
         ))}
       </ScrollView>
       {results.length === 0 ? (
         <View style={styles.centerContent}>
-          <Text style={styles.emptyText}>No titles match these filters.</Text>
+          <Text style={styles.emptyText}>{t('noTitlesMatch')}</Text>
         </View>
       ) : (
         <FlatList

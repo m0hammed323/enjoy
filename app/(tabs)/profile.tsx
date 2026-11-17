@@ -1,10 +1,14 @@
 import { StyleSheet, View, Text, ScrollView, Pressable, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, FontSize, Spacing, Radius } from '@/constants/theme';
-import { Settings, Bell, Download, Shield, CircleHelp, LogOut, ChevronRight, Star, Crown } from 'lucide-react-native';
+import { Settings, Bell, Download, Shield, CircleHelp, LogOut, ChevronRight, Star, Crown, Languages } from 'lucide-react-native';
 import { useState } from 'react';
+import { useI18n } from '@/hooks/useI18n';
+import { useConfig } from '@/hooks/useConfig';
 
 export default function ProfileScreen() {
+  const { t, lang, setLanguage } = useI18n();
+  const { config } = useConfig();
   const [notifications, setNotifications] = useState(true);
   const [autoplay, setAutoplay] = useState(false);
   const [hdStreaming, setHdStreaming] = useState(true);
@@ -13,67 +17,92 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Spacing.xxl }}>
         <View style={styles.header}>
-          <Text style={styles.title}>Profile</Text>
+          <Text style={styles.title}>{t('profile')}</Text>
         </View>
 
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>A</Text>
+            <Text style={styles.avatarText}>E</Text>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>Alex Morgan</Text>
+            <Text style={styles.profileName}>enjoy</Text>
             <View style={styles.premiumBadge}>
               <Crown size={12} color={Colors.accent} fill={Colors.accent} />
-              <Text style={styles.premiumText}>Premium Member</Text>
+              <Text style={styles.premiumText}>{t('premiumMember')}</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.statsRow}>
-          <StatCard icon={<Star size={20} color={Colors.star} fill={Colors.star} />} value="247" label="Watched" />
-          <StatCard icon={<Download size={20} color={Colors.secondary} />} value="12" label="Downloaded" />
-          <StatCard icon={<Crown size={20} color={Colors.accent} fill={Colors.accent} />} value="Pro" label="Plan" />
+          <StatCard icon={<Star size={20} color={Colors.star} fill={Colors.star} />} value="0" label={t('watched')} />
+          <StatCard icon={<Download size={20} color={Colors.secondary} />} value="0" label={t('downloaded')} />
+          <StatCard icon={<Crown size={20} color={Colors.accent} fill={Colors.accent} />} value="Pro" label={t('plan')} />
         </View>
 
-        <Text style={styles.sectionLabel}>Preferences</Text>
+        <Text style={styles.sectionLabel}>{t('languageLabel')}</Text>
+        <View style={styles.section}>
+          <Pressable
+            style={[styles.row, lang === 'ar' && styles.rowSelected]}
+            onPress={() => setLanguage('ar')}
+          >
+            <View style={styles.rowLeft}>
+              <Languages size={20} color={Colors.textSecondary} />
+              <Text style={styles.rowLabel}>{t('arabic')}</Text>
+            </View>
+            {lang === 'ar' && <View style={styles.selectedDot} />}
+          </Pressable>
+          <Divider />
+          <Pressable
+            style={[styles.row, lang === 'en' && styles.rowSelected]}
+            onPress={() => setLanguage('en')}
+          >
+            <View style={styles.rowLeft}>
+              <Languages size={20} color={Colors.textSecondary} />
+              <Text style={styles.rowLabel}>{t('english')}</Text>
+            </View>
+            {lang === 'en' && <View style={styles.selectedDot} />}
+          </Pressable>
+        </View>
+
+        <Text style={styles.sectionLabel}>{t('preferences')}</Text>
         <View style={styles.section}>
           <ToggleRow
             icon={<Bell size={20} color={Colors.textSecondary} />}
-            label="Push Notifications"
+            label={t('pushNotifications')}
             value={notifications}
             onValueChange={setNotifications}
           />
           <Divider />
           <ToggleRow
             icon={<Settings size={20} color={Colors.textSecondary} />}
-            label="Autoplay Next"
+            label={t('autoplayNext')}
             value={autoplay}
             onValueChange={setAutoplay}
           />
           <Divider />
           <ToggleRow
             icon={<Download size={20} color={Colors.textSecondary} />}
-            label="HD Streaming"
+            label={t('hdStreaming')}
             value={hdStreaming}
             onValueChange={setHdStreaming}
           />
         </View>
 
-        <Text style={styles.sectionLabel}>Account</Text>
+        <Text style={styles.sectionLabel}>{t('account')}</Text>
         <View style={styles.section}>
-          <LinkRow icon={<Shield size={20} color={Colors.textSecondary} />} label="Privacy & Security" />
+          <LinkRow icon={<Shield size={20} color={Colors.textSecondary} />} label={t('privacySecurity')} />
           <Divider />
-          <LinkRow icon={<CircleHelp size={20} color={Colors.textSecondary} />} label="Help & Support" />
+          <LinkRow icon={<CircleHelp size={20} color={Colors.textSecondary} />} label={t('helpSupport')} />
           <Divider />
-          <LinkRow icon={<Settings size={20} color={Colors.textSecondary} />} label="App Settings" />
+          <LinkRow icon={<Settings size={20} color={Colors.textSecondary} />} label={t('appSettings')} />
         </View>
 
         <Pressable style={styles.logoutButton}>
           <LogOut size={20} color={Colors.error} />
-          <Text style={styles.logoutText}>Sign Out</Text>
+          <Text style={styles.logoutText}>{t('signOut')}</Text>
         </Pressable>
 
-        <Text style={styles.version}>CineVerse v1.0.0</Text>
+        <Text style={styles.version}>enjoy v{config?.app_version || '1.0.0'}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -228,6 +257,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
   },
+  rowSelected: {
+    backgroundColor: 'rgba(229,9,20,0.08)',
+  },
   rowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -237,6 +269,12 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: FontSize.md,
     fontWeight: '500',
+  },
+  selectedDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.primary,
   },
   divider: {
     height: 1,

@@ -1,10 +1,9 @@
-import { ScrollView, StyleSheet, Text, View, Dimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { Title } from '@/types';
 import { MovieCard } from './MovieCard';
 import { Colors, FontSize, Spacing } from '@/constants/theme';
-import { useRouter } from 'expo-router';
+import { useI18n } from '@/hooks/useI18n';
 import { ChevronRight } from 'lucide-react-native';
-import { Pressable } from 'react-native';
 
 interface RowProps {
   label: string;
@@ -13,6 +12,8 @@ interface RowProps {
 }
 
 export function ContentRow({ label, titles, onSeeAll }: RowProps) {
+  const { t } = useI18n();
+
   if (titles.length === 0) return null;
 
   return (
@@ -21,7 +22,7 @@ export function ContentRow({ label, titles, onSeeAll }: RowProps) {
         <Text style={styles.label}>{label}</Text>
         {onSeeAll && (
           <Pressable style={styles.seeAll} onPress={onSeeAll}>
-            <Text style={styles.seeAllText}>See All</Text>
+            <Text style={styles.seeAllText}>{t('seeAll')}</Text>
             <ChevronRight size={16} color={Colors.primary} />
           </Pressable>
         )}
@@ -31,8 +32,8 @@ export function ContentRow({ label, titles, onSeeAll }: RowProps) {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {titles.map((t) => (
-          <MovieCard key={t.id} title={t} />
+        {titles.map((t2) => (
+          <MovieCard key={t2.id} title={t2} />
         ))}
       </ScrollView>
     </View>

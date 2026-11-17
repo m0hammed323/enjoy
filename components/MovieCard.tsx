@@ -1,8 +1,9 @@
-import { Pressable, StyleSheet, Text, View, Image, Dimensions } from 'react-native';
+import { Pressable, StyleSheet, Text, View, Image } from 'react-native';
 import { Star, Plus, Check } from 'lucide-react-native';
 import { Title } from '@/types';
 import { Colors, Radius, FontSize, Spacing } from '@/constants/theme';
 import { useWatchlist } from '@/hooks/useWatchlist';
+import { useI18n } from '@/hooks/useI18n';
 import { useRouter } from 'expo-router';
 
 const CARD_WIDTH = 140;
@@ -17,6 +18,7 @@ interface MovieCardProps {
 export function MovieCard({ title, width = CARD_WIDTH, height = CARD_HEIGHT }: MovieCardProps) {
   const router = useRouter();
   const { isInWatchlist, toggleWatchlist } = useWatchlist();
+  const { t } = useI18n();
   const inList = isInWatchlist(title.id);
 
   return (
@@ -53,7 +55,7 @@ export function MovieCard({ title, width = CARD_WIDTH, height = CARD_HEIGHT }: M
       <View style={styles.bottomInfo}>
         <Text style={styles.title} numberOfLines={2}>{title.title}</Text>
         <Text style={styles.meta}>
-          {title.year} · {title.type === 'movie' ? 'Movie' : 'Series'}
+          {title.year} · {title.type === 'movie' ? t('movies') : t('series')}
         </Text>
       </View>
     </Pressable>

@@ -1,29 +1,29 @@
-import { StyleSheet, View, Text, FlatList, Pressable } from 'react-native';
+import { StyleSheet, View, Text, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MovieCard } from '@/components/MovieCard';
 import { Colors, FontSize, Spacing } from '@/constants/theme';
 import { useWatchlistTitles } from '@/hooks/useWatchlist';
+import { useI18n } from '@/hooks/useI18n';
 import { Title } from '@/types';
 import { Bookmark } from 'lucide-react-native';
 
 export default function MyListScreen() {
   const titles = useWatchlistTitles();
+  const { t } = useI18n();
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>My List</Text>
+        <Text style={styles.title}>{t('myList')}</Text>
         <Text style={styles.subtitle}>
-          {titles.length} {titles.length === 1 ? 'title' : 'titles'} saved
+          {titles.length} {titles.length === 1 ? t('titlesSaved') : t('titlesSavedPlural')}
         </Text>
       </View>
       {titles.length === 0 ? (
         <View style={styles.centerContent}>
           <Bookmark size={56} color={Colors.textMuted} strokeWidth={1.5} />
-          <Text style={styles.emptyTitle}>Your list is empty</Text>
-          <Text style={styles.emptyText}>
-            Tap the + on any movie or series to save it here.
-          </Text>
+          <Text style={styles.emptyTitle}>{t('yourListEmpty')}</Text>
+          <Text style={styles.emptyText}>{t('tapToAdd')}</Text>
         </View>
       ) : (
         <FlatList

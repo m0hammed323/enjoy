@@ -4,6 +4,7 @@ import { Star, Play, Plus, Info } from 'lucide-react-native';
 import { Title } from '@/types';
 import { Colors, Radius, FontSize, Spacing } from '@/constants/theme';
 import { useWatchlist } from '@/hooks/useWatchlist';
+import { useI18n } from '@/hooks/useI18n';
 import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
@@ -15,6 +16,7 @@ interface HeroProps {
 export function Hero({ title }: HeroProps) {
   const router = useRouter();
   const { isInWatchlist, toggleWatchlist } = useWatchlist();
+  const { t } = useI18n();
   const inList = isInWatchlist(title.id);
 
   return (
@@ -28,7 +30,7 @@ export function Hero({ title }: HeroProps) {
       <View style={styles.content}>
         <View style={styles.badgeRow}>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{title.type === 'movie' ? 'FILM' : 'SERIES'}</Text>
+            <Text style={styles.badgeText}>{title.type === 'movie' ? t('movies') : t('series')}</Text>
           </View>
           {title.isNew && (
             <View style={[styles.badge, { backgroundColor: Colors.primary }]}>
@@ -45,8 +47,12 @@ export function Hero({ title }: HeroProps) {
 
         <View style={styles.metaRow}>
           <Text style={styles.metaText}>{title.year}</Text>
-          <Text style={styles.dot}>•</Text>
-          <Text style={styles.metaText}>{title.genres.join(' · ')}</Text>
+          {title.genres.length > 0 && (
+            <>
+              <Text style={styles.dot}>•</Text>
+              <Text style={styles.metaText}>{title.genres.join(' · ')}</Text>
+            </>
+          )}
           {title.duration > 0 && (
             <>
               <Text style={styles.dot}>•</Text>
@@ -63,14 +69,14 @@ export function Hero({ title }: HeroProps) {
             onPress={() => router.push(`/detail/${title.id}`)}
           >
             <Play size={20} color={Colors.background} fill={Colors.background} />
-            <Text style={styles.playButtonText}>Play</Text>
+            <Text style={styles.playButtonText}>{t('play')}</Text>
           </Pressable>
           <Pressable
             style={styles.secondaryButton}
             onPress={() => router.push(`/detail/${title.id}`)}
           >
             <Info size={20} color={Colors.textPrimary} />
-            <Text style={styles.secondaryButtonText}>Details</Text>
+            <Text style={styles.secondaryButtonText}>{t('details')}</Text>
           </Pressable>
           <Pressable
             style={styles.iconButton}

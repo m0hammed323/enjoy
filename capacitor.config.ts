@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.cineverse.app',
-  appName: 'CineVerse',
+  appId: 'com.enjoy.app',
+  appName: 'enjoy',
   webDir: 'dist',
 };
 

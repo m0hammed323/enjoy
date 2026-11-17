@@ -1,44 +1,64 @@
-import { ScrollView, StyleSheet, View, Text, Pressable } from 'react-native';
+import { ScrollView, StyleSheet, View, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Hero } from '@/components/Hero';
 import { ContentRow } from '@/components/ContentRow';
 import { Colors, FontSize, Spacing } from '@/constants/theme';
-import { getFeatured, getTrending, getNewReleases, getByGenre, ALL_GENRES } from '@/data/titles';
+import { useConfig } from '@/hooks/useConfig';
+import { useI18n } from '@/hooks/useI18n';
 import { useWatchlistTitles } from '@/hooks/useWatchlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator } from 'react-native';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const featured = getFeatured();
-  const trending = getTrending();
-  const newReleases = getNewReleases();
+  const { titles, status } = useConfig();
+  const { t } = useI18n();
   const watchlistTitles = useWatchlistTitles();
-  const featuredItem = featured[0] || trending[0];
+
+  const featured = titles.filter((t) => t.featured).slice(0, 5);
+  const trending = titles.filter((t) => t.trending).slice(0, 20);
+  const newReleases = titles.filter((t) => t.isNew).slice(0, 20);
+  const movies = titles.filter((t) => t.type === 'movie');
+  const series = titles.filter((t) => t.type === 'series');
+  const featuredItem = featured[0] || trending[0] || movies[0] || titles[0];
+
+  if (status === 'loading' || titles.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
         <View style={styles.topBar}>
-          <Text style={styles.logo}>CINEVERSE</Text>
+          <Text style={styles.logo}>enjoy</Text>
         </View>
         {featuredItem && <Hero title={featuredItem} />}
         <View style={styles.content}>
           {watchlistTitles.length > 0 && (
-            <ContentRow label="My List" titles={watchlistTitles} />
+            <ContentRow label={t('myList')} titles={watchlistTitles} />
           )}
           <ContentRow
-            label="Trending Now"
+            label={t('trendingNow')}
             titles={trending}
             onSeeAll={() => router.push('/(tabs)/movies')}
           />
           <ContentRow
-            label="New Releases"
+            label={t('newReleases')}
             titles={newReleases}
             onSeeAll={() => router.push('/(tabs)/movies')}
           />
-          {ALL_GENRES.slice(0, 4).map((g) => (
-            <ContentRow key={g} label={g} titles={getByGenre(g)} />
-          ))}
+          {movies.length > 0 && (
+            <ContentRow label={t('movies')} titles={movies} />
+          )}
+          {series.length > 0 && (
+            <ContentRow label={t('series')} titles={series} />
+          )}
         </View>
         <View style={{ height: Spacing.xxl }} />
       </ScrollView>
@@ -71,5 +91,10 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingTop: Spacing.lg,
+  },
+  centerContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

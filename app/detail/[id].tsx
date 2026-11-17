@@ -6,8 +6,10 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Play, Plus, Check, Share2, Star, Clock, Calendar, Globe, Film, Tv, ChevronLeft } from 'lucide-react-native';
 import { getTitleById } from '@/data/titles';
 import { useWatchlist } from '@/hooks/useWatchlist';
+import { useI18n } from '@/hooks/useI18n';
 import { Colors, FontSize, Spacing, Radius } from '@/constants/theme';
 import { Episode } from '@/types';
+import { VideoPlayer } from '@/components/VideoPlayer';
 
 const { width } = Dimensions.get('window');
 
@@ -16,15 +18,17 @@ export default function DetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const title = id ? getTitleById(id) : undefined;
   const { isInWatchlist, toggleWatchlist } = useWatchlist();
+  const { t } = useI18n();
   const [playing, setPlaying] = useState(false);
+  const [playingEpisode, setPlayingEpisode] = useState<Episode | null>(null);
 
   if (!title) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Title not found.</Text>
+          <Text style={styles.errorText}>{t('titleNotFound')}</Text>
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
-            <Text style={styles.backBtnText}>Go Back</Text>
+            <Text style={styles.backBtnText}>{t('goBack')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -32,14 +36,20 @@ export default function DetailScreen() {
   }
 
   const inList = isInWatchlist(title.id);
+  const currentEmbedUrl = playingEpisode?.embedUrl || title.embedUrl;
+  const currentTitle = playingEpisode ? `${title.title} - ${playingEpisode.title}` : title.title;
+
   const renderEpisode = ({ item }: { item: Episode }) => (
-    <Pressable style={styles.episodeRow} onPress={() => setPlaying(true)}>
+    <Pressable
+      style={styles.episodeRow}
+      onPress={() => { setPlayingEpisode(item); setPlaying(true); }}
+    >
       <Image source={{ uri: item.thumbnail }} style={styles.episodeThumb} resizeMode="cover" />
       <View style={styles.episodeInfo}>
         <Text style={styles.episodeNum}>S{item.season} · E{item.episode}</Text>
         <Text style={styles.episodeTitle} numberOfLines={1}>{item.title}</Text>
         <Text style={styles.episodeDesc} numberOfLines={2}>{item.description}</Text>
-        <Text style={styles.episodeDuration}>{item.duration} min</Text>
+        {item.duration > 0 && <Text style={styles.episodeDuration}>{item.duration} min</Text>}
       </View>
     </Pressable>
   );
@@ -65,7 +75,7 @@ export default function DetailScreen() {
                 ) : (
                   <Tv size={12} color={Colors.textPrimary} />
                 )}
-                <Text style={styles.typeText}>{title.type === 'movie' ? 'MOVIE' : 'SERIES'}</Text>
+                <Text style={styles.typeText}>{title.type === 'movie' ? t('movies') : t('series')}</Text>
               </View>
               <View style={styles.qualityBadge}>
                 <Text style={styles.qualityText}>{title.quality}</Text>
@@ -77,9 +87,9 @@ export default function DetailScreen() {
 
         <View style={styles.body}>
           <View style={styles.actionsRow}>
-            <Pressable style={styles.playButton} onPress={() => setPlaying(true)}>
+            <Pressable style={styles.playButton} onPress={() => { setPlayingEpisode(null); setPlaying(true); }}>
               <Play size={20} color={Colors.background} fill={Colors.background} />
-              <Text style={styles.playText}>Play</Text>
+              <Text style={styles.playText}>{t('play')}</Text>
             </Pressable>
             <Pressable
               style={[styles.iconBtn, inList && styles.iconBtnActive]}
@@ -94,37 +104,41 @@ export default function DetailScreen() {
 
           {playing && (
             <View style={styles.playerBanner}>
-              <Text style={styles.playerText}>▶ Now playing: {title.title}</Text>
+              <Text style={styles.playerText}>▶ {t('nowPlaying')}: {currentTitle}</Text>
             </View>
           )}
 
           <View style={styles.metaGrid}>
-            <MetaItem icon={<Star size={14} color={Colors.star} fill={Colors.star} />} value={title.rating.toFixed(1)} label="Rating" />
-            {title.duration > 0 && <MetaItem icon={<Clock size={14} color={Colors.textSecondary} />} value={`${Math.floor(title.duration / 60)}h ${title.duration % 60}m`} label="Length" />}
-            <MetaItem icon={<Calendar size={14} color={Colors.textSecondary} />} value={String(title.year)} label="Year" />
-            <MetaItem icon={<Globe size={14} color={Colors.textSecondary} />} value={title.language} label="Language" />
+            <MetaItem icon={<Star size={14} color={Colors.star} fill={Colors.star} />} value={title.rating.toFixed(1)} label={t('rating')} />
+            {title.duration > 0 && <MetaItem icon={<Clock size={14} color={Colors.textSecondary} />} value={`${Math.floor(title.duration / 60)}h ${title.duration % 60}m`} label={t('length')} />}
+            <MetaItem icon={<Calendar size={14} color={Colors.textSecondary} />} value={String(title.year)} label={t('year')} />
+            {title.language ? <MetaItem icon={<Globe size={14} color={Colors.textSecondary} />} value={title.language} label={t('language')} /> : null}
           </View>
 
-          <View style={styles.genreRow}>
-            {title.genres.map((g) => (
-              <View key={g} style={styles.genreTag}>
-                <Text style={styles.genreTagText}>{g}</Text>
-              </View>
-            ))}
-          </View>
+          {title.genres.length > 0 && (
+            <View style={styles.genreRow}>
+              {title.genres.map((g) => (
+                <View key={g} style={styles.genreTag}>
+                  <Text style={styles.genreTagText}>{g}</Text>
+                </View>
+              ))}
+            </View>
+          )}
 
-          <Text style={styles.sectionLabel}>Overview</Text>
+          <Text style={styles.sectionLabel}>{t('overview')}</Text>
           <Text style={styles.description}>{title.description}</Text>
 
-          <View style={styles.infoList}>
-            <InfoLine label="Director" value={title.director} />
-            <InfoLine label="Cast" value={title.cast.join(', ')} />
-            <InfoLine label="Country" value={title.country} />
-          </View>
+          {(title.director || title.cast.length > 0 || title.country) && (
+            <View style={styles.infoList}>
+              {title.director ? <InfoLine label={t('director')} value={title.director} /> : null}
+              {title.cast.length > 0 ? <InfoLine label={t('cast')} value={title.cast.join(', ')} /> : null}
+              {title.country ? <InfoLine label={t('country')} value={title.country} /> : null}
+            </View>
+          )}
 
           {title.episodes && title.episodes.length > 0 && (
             <View style={styles.episodesSection}>
-              <Text style={styles.sectionLabel}>Episodes</Text>
+              <Text style={styles.sectionLabel}>{t('episodes')}</Text>
               <FlatList
                 data={title.episodes}
                 keyExtractor={(e) => e.id}
@@ -137,6 +151,14 @@ export default function DetailScreen() {
         </View>
         <View style={{ height: Spacing.xxl }} />
       </ScrollView>
+
+      {playing && currentEmbedUrl && (
+        <VideoPlayer
+          embedUrl={currentEmbedUrl}
+          title={currentTitle}
+          onClose={() => { setPlaying(false); setPlayingEpisode(null); }}
+        />
+      )}
     </SafeAreaView>
   );
 }
