@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, Search, Clapperboard, Bookmark, User } from 'lucide-react-native';
+import { Home, Search, Clapperboard, Tv, User } from 'lucide-react-native';
 import { Colors } from '@/constants/theme';
 import { useI18n } from '@/hooks/useI18n';
 
@@ -54,11 +54,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="mylist"
+        name="channels"
         options={{
-          title: t('myList'),
+          title: t('channels'),
           tabBarIcon: ({ size, color }) => (
-            <Bookmark size={size} color={color} strokeWidth={2} />
+            <Tv size={size} color={color} strokeWidth={2} />
           ),
         }}
       />

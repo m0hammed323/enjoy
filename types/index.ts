@@ -42,6 +42,14 @@ export interface WatchlistItem {
   addedAt: number;
 }
 
+export interface Channel {
+  id: string;
+  name: string;
+  logo: string;
+  group: string;
+  streamUrl: string;
+}
+
 export interface RemoteConfig {
   app_name: string;
   app_icon: string;

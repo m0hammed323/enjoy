@@ -1,10 +1,38 @@
-import { Title, Episode, ContentType } from '@/types';
+import { Title, Episode, ContentType, Channel } from '@/types';
 
 interface ParsedEntry {
   name: string;
   logo: string;
   group: string;
   embedUrl: string;
+}
+
+export function parseM3UChannels(content: string): Channel[] {
+  const lines = content.split('\n');
+  const channels: Channel[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('#EXTINF')) {
+      const nameMatch = line.match(/,(.+)$/);
+      const logoMatch = line.match(/tvg-logo="([^"]*)"/);
+      const groupMatch = line.match(/group-title="([^"]*)"/);
+
+      const nextLine = (lines[i + 1] || '').trim();
+      const urlMatch = nextLine.match(/(https?:\/\/[^\s<>"]+)/i);
+
+      if (nameMatch && urlMatch) {
+        channels.push({
+          id: `ch-${channels.length}-${nameMatch[1].trim().replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 20)}`,
+          name: nameMatch[1].trim(),
+          logo: logoMatch ? logoMatch[1].trim() : '',
+          group: groupMatch ? groupMatch[1].trim() : 'Other',
+          streamUrl: urlMatch[1].trim(),
+        });
+      }
+    }
+  }
+  return channels;
 }
 
 export function parseM3U(content: string): ParsedEntry[] {

@@ -1,14 +1,17 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { RemoteConfig, Title } from '@/types';
-import { m3uToTitles } from '@/data/m3uParser';
+import { RemoteConfig, Title, Channel } from '@/types';
+import { m3uToTitles, parseM3UChannels } from '@/data/m3uParser';
+import { setTitles as setGlobalTitles } from '@/data/titles';
 
 const CONFIG_URL = 'https://raw.githubusercontent.com/m0hammed323/tv-config/main/config.json';
+const CHANNELS_URL = 'https://raw.githubusercontent.com/m0hammed323/tv-config/main/channels.m3u';
 
 type ConfigStatus = 'loading' | 'ready' | 'error';
 
 interface ConfigContextType {
   config: RemoteConfig | null;
   titles: Title[];
+  channels: Channel[];
   status: ConfigStatus;
   error: string | null;
   retry: () => void;
@@ -25,7 +28,8 @@ async function fetchWithNoCache(url: string): Promise<Response> {
 
 export function ConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<RemoteConfig | null>(null);
-  const [titles, setTitles] = useState<Title[]>([]);
+  const [titles, setTitlesState] = useState<Title[]>([]);
+  const [channels, setChannels] = useState<Channel[]>([]);
   const [status, setStatus] = useState<ConfigStatus>('loading');
   const [error, setError] = useState<string | null>(null);
   const [announcementShown, setAnnouncementShown] = useState(false);
@@ -39,12 +43,14 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
       const cfg: RemoteConfig = await configResp.json();
       setConfig(cfg);
 
+      const allTitles: Title[] = [];
+
       if (cfg.movies_url) {
         const moviesResp = await fetchWithNoCache(cfg.movies_url);
         if (moviesResp.ok) {
           const m3uContent = await moviesResp.text();
           const parsed = m3uToTitles(m3uContent);
-          setTitles(parsed);
+          allTitles.push(...parsed);
         }
       }
 
@@ -55,12 +61,28 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
             const streamContent = await streamResp.text();
             if (streamContent.includes('#EXTM3U')) {
               const streamTitles = m3uToTitles(streamContent);
-              setTitles((prev) => [...prev, ...streamTitles]);
+              allTitles.push(...streamTitles);
             }
           }
         } catch {
           // stream_url is optional
         }
+      }
+
+      setTitlesState(allTitles);
+      setGlobalTitles(allTitles);
+
+      // Load channels
+      try {
+        const channelsResp = await fetchWithNoCache(CHANNELS_URL);
+        if (channelsResp.ok) {
+          const channelsContent = await channelsResp.text();
+          if (channelsContent.includes('#EXTM3U')) {
+            setChannels(parseM3UChannels(channelsContent));
+          }
+        }
+      } catch {
+        // channels are optional
       }
 
       setStatus('ready');
@@ -76,7 +98,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
 
   return (
     <ConfigContext.Provider
-      value={{ config, titles, status, error, retry: load, announcementShown, setAnnouncementShown }}
+      value={{ config, titles, channels, status, error, retry: load, announcementShown, setAnnouncementShown }}
     >
       {children}
     </ConfigContext.Provider>

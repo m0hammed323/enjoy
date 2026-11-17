@@ -156,6 +156,7 @@ export default function DetailScreen() {
         <VideoPlayer
           embedUrl={currentEmbedUrl}
           title={currentTitle}
+          titleId={playingEpisode ? `${title.id}-${playingEpisode.id}` : title.id}
           onClose={() => { setPlaying(false); setPlayingEpisode(null); }}
         />
       )}
