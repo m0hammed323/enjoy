@@ -50,6 +50,7 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -82,7 +83,7 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
     if (Capacitor.isNativePlatform()) {
       ScreenOrientation.unlock().catch(() => {});
     } else if (Platform.OS === 'web' && typeof screen !== 'undefined') {
-      (screen.orientation as ScreenOrientation & { unlock?: () => void }).unlock?.();
+      (screen.orientation as any).unlock?.();
     }
   }, []);
 
@@ -96,7 +97,7 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
     if (Capacitor.isNativePlatform()) {
       ScreenOrientation.lock({ orientation: 'landscape' }).catch(() => {});
     } else if (Platform.OS === 'web' && typeof screen !== 'undefined') {
-      (screen.orientation as ScreenOrientation & { lock?: (orientation: string) => Promise<void> }).lock?.('landscape').catch(() => {});
+      (screen.orientation as any).lock?.('landscape').catch(() => {});
     }
     return restoreOrientation;
   }, [restoreOrientation]);
@@ -134,12 +135,19 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
       if (!video) return;
       video.setAttribute('playsinline', 'true');
       video.setAttribute('webkit-playsinline', 'true');
-      video.on timeupdate = undefined;
+      let savedPosition = 0;
+      if (!isLive && titleId) {
+        try { savedPosition = Number(window.localStorage.getItem(resumeKey(titleId)) || 0); } catch { /* resume is optional */ }
+      }
       video.ontimeupdate = () => {
         setCurrentTime(video.currentTime || 0);
         if (video.buffered.length) setBuffered(video.buffered.end(video.buffered.length - 1));
       };
       video.ondurationchange = () => setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+      video.onloadedmetadata = () => {
+        setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+        if (savedPosition > 0 && savedPosition < video.duration - 10) video.currentTime = savedPosition;
+      };
       video.onplay = () => setPlaying(true);
       video.onpause = () => setPlaying(false);
       video.onerror = () => {
@@ -148,16 +156,6 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
           setLoading(false);
         }
       };
-      if (!isLive && titleId) {
-        try {
-          const saved = Number(window.localStorage.getItem(resumeKey(titleId)) || 0);
-          if (saved > 0) {
-            video.onloadedmetadata = () => {
-              if (saved < video.duration - 10) video.currentTime = saved;
-            };
-          }
-        } catch { /* resume is optional */ }
-      }
 
       const source = sources[0].url;
       if (source.toLowerCase().includes('.m3u8') && Hls.isSupported()) {
@@ -186,6 +184,7 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
         video.onloadedmetadata = () => {
           if (!cancelled) {
             setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+            if (savedPosition > 0 && savedPosition < video.duration - 10) video.currentTime = savedPosition;
             setLoading(false);
             video.play().catch(() => {});
           }
@@ -203,7 +202,7 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
       cancelled = true;
       disposeStream();
     };
-  }, [directStreamUrl, embedUrl, isLive, titleId, disposeStream, t]);
+  }, [directStreamUrl, embedUrl, isLive, titleId, disposeStream, t, retryAttempt]);
 
   useEffect(() => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -251,7 +250,6 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
     setQualityMenuVisible(false);
   };
 
-  const cycleFit = () => setFit((current) => videoFits[(videoFits.indexOf(current) + 1) % videoFits.length]);
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const bufferedProgress = duration > 0 ? Math.min(100, (buffered / duration) * 100) : 0;
   const fitLabel = fit === 'contain' ? 'احتواء' : fit === 'cover' ? 'ملء' : 'تمديد';
@@ -263,7 +261,7 @@ export function SportsTVPlayer({ embedUrl, title, titleId, onClose, directStream
         <video ref={videoRef as any} style={[styles.video as any, { objectFit: fit }]} playsInline />
         {!loading && !error && <Pressable style={styles.tapLayer} onPress={() => setControlsVisible((visible) => !visible)} />}
         {loading && <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /><Text style={styles.message}>{t('loading')}</Text></View>}
-        {!!error && <View style={styles.center}><Text style={styles.error}>{error}</Text><Pressable style={styles.retry} onPress={() => { setError(''); setLoading(true); videoRef.current?.load(); }}><Text style={styles.retryText}>{t('retry')}</Text></Pressable></View>}
+        {!!error && <View style={styles.center}><Text style={styles.error}>{error}</Text><Pressable style={styles.retry} onPress={() => { setError(''); setLoading(true); setRetryAttempt((attempt) => attempt + 1); }}><Text style={styles.retryText}>{t('retry')}</Text></Pressable></View>}
 
         {locked && <View style={styles.lockOverlay} pointerEvents="box-none">
           {controlsVisible && <Pressable style={styles.unlockButton} onPress={() => { setLocked(false); setControlsVisible(true); }}><Unlock size={22} color="#fff" /><Text style={styles.lockText}>{t('unlockPlayer')}</Text></Pressable>}
