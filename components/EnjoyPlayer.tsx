@@ -1,422 +1,1508 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Capacitor } from '@capacitor/core';
-import { ScreenOrientation } from '@capacitor/screen-orientation';
-import { StatusBar as NativeStatusBar } from '@capacitor/status-bar';
-import Hls from 'hls.js';
-import { Lock, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, Settings, Tv, Unlock, Volume2, VolumeX, X } from 'lucide-react-native';
-import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
-import { registerBackInterceptor } from '@/utils/backNavigation';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
+  TextInput,
+  Platform,
+} from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  RotateCw,
+  Lock,
+  Unlock,
+  Maximize,
+  Settings,
+  ArrowRight,
+  Volume2,
+  VolumeX,
+  Tv,
+  Search,
+  X,
+  Check,
+  AlertCircle,
+  Eye,
+  EyeOff,
+} from 'lucide-react-native';
+import { getCapacitorPlugin, registerBackInterceptor } from '@/utils/backNavigation';
 
-export interface PlayerChannel {
+export interface VideoQualityOption {
+  label: string;
+  url: string;
+  levelIndex?: number;
+}
+
+export interface M3UChannel {
   id: string;
   name: string;
   url: string;
-  logo?: string;
   group?: string;
+  logo?: string;
 }
-
-export interface PlayerQuality {
-  label: string;
-  url?: string;
-  height?: number;
-  bitrate?: number;
-}
-
-type FitMode = 'contain' | 'cover' | 'fill' | 'zoom';
 
 export interface EnjoyPlayerProps {
-  title: string;
+  title?: string;
   subtitle?: string;
-  url: string;
-  qualities?: Array<string | PlayerQuality>;
-  channels?: PlayerChannel[];
+  url?: string;
+  src?: string;
+  embedCode?: string;
+  qualities?: VideoQualityOption[];
+  channels?: M3UChannel[];
   forceLandscape?: boolean;
-  isLive?: boolean;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
-/** Parse an M3U/M3U8 playlist into channel entries. */
-export function parseM3UPlaylist(text: string, baseUrl = ''): PlayerChannel[] {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const result: PlayerChannel[] = [];
-  let pending: Omit<PlayerChannel, 'url'> | null = null;
-  for (const line of lines) {
-    if (line.startsWith('#EXTINF')) {
-      const name = line.split(',').slice(1).join(',').trim() || 'قناة';
-      const attr = (key: string) => line.match(new RegExp(`${key}=["']([^"']*)["']`, 'i'))?.[1] || '';
-      pending = {
-        id: `${result.length}-${name}`,
-        name,
-        logo: attr('tvg-logo') || undefined,
-        group: attr('group-title') || undefined,
-      };
-    } else if (line && !line.startsWith('#')) {
-      if (!pending) pending = { id: `${result.length}-${line}`, name: line, group: undefined, logo: undefined };
-      let streamUrl = line;
-      try { if (baseUrl) streamUrl = new URL(line, baseUrl).toString(); } catch { /* retain supplied URL */ }
-      result.push({ ...pending, url: streamUrl });
-      pending = null;
-    }
-  }
-  return result;
-}
+type AspectMode = 'contain' | 'cover' | 'fill' | 'zoom';
+type PlayerSourceMode = 'video' | 'embed';
 
-const formatTime = (seconds: number) => {
-  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
-  const total = Math.floor(seconds);
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const secs = total % 60;
-  return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}` : `${minutes}:${String(secs).padStart(2, '0')}`;
-};
-
-const fitOptions: Array<{ mode: FitMode; label: string }> = [
-  { mode: 'contain', label: 'ملاءمة (Fit)' },
-  { mode: 'cover', label: 'ملء الشاشة (Fill)' },
-  { mode: 'fill', label: 'تمديد (Stretch)' },
-  { mode: 'zoom', label: 'تكبير (Zoom)' },
+const ASPECT_MODES: { key: AspectMode; label: string; zoomScale: number }[] = [
+  { key: 'contain', label: 'ملاءمة (Fit)', zoomScale: 1 },
+  { key: 'cover', label: 'ملء الشاشة (Fill)', zoomScale: 1.12 },
+  { key: 'fill', label: 'تمديد (Stretch)', zoomScale: 1.22 },
+  { key: 'zoom', label: 'تكبير (Zoom)', zoomScale: 1.32 },
 ];
 
-const isPlaylistUrl = (value: string) => /\.m3u(?!8)(?:$|[?#])/i.test(value);
-const isVideoUrl = (value: string) => /\.(?:m3u8|mp4|webm|mov|m4v)(?:$|[?#])/i.test(value);
+/**
+ * محلل قوائم M3U / IPTV لاستخراج أسماء القنوات وتصنيفاتها وروابط البث بدقة
+ */
+export function parseM3UPlaylist(rawText: string): M3UChannel[] {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
 
-export function EnjoyPlayer({ title, subtitle, url, qualities = [], channels = [], forceLandscape = true, isLive = false, onClose }: EnjoyPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const stageRef = useRef<View | null>(null);
-  const hlsRef = useRef<Hls | null>(null);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastTapRef = useRef(0);
-  const closedRef = useRef(false);
-  const lockedRef = useRef(false);
-  const popoverRef = useRef(false);
-  const drawerRef = useRef(false);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const parsed: M3UChannel[] = [];
+  let pendingName = '';
+  let pendingGroup = 'الكل';
+  let pendingLogo = '';
 
-  const [activeChannel, setActiveChannel] = useState<PlayerChannel | null>(null);
-  const [loadedChannels, setLoadedChannels] = useState<PlayerChannel[]>(channels);
-  const [channelSearch, setChannelSearch] = useState('');
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(true);
-  const [locked, setLocked] = useState(false);
-  const [unlockHint, setUnlockHint] = useState(false);
-  const [qualityOpen, setQualityOpen] = useState(false);
-  const [fitOpen, setFitOpen] = useState(false);
-  const [fit, setFit] = useState<FitMode>('contain');
-  const [fitBadge, setFitBadge] = useState('');
-  const [seekFeedback, setSeekFeedback] = useState('');
-  const [levels, setLevels] = useState<Array<{ height: number; bitrate: number }>>([]);
-  const [selectedLevel, setSelectedLevel] = useState(-1);
-  const [time, setTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [buffered, setBuffered] = useState(0);
-  const [fullscreen, setFullscreen] = useState(false);
-
-  lockedRef.current = locked;
-  popoverRef.current = qualityOpen || fitOpen;
-  drawerRef.current = drawerOpen;
-  const currentUrl = activeChannel?.url || url;
-  const live = isLive || !!activeChannel;
-  const visibleChannels = useMemo(() => loadedChannels.filter((channel) => `${channel.name} ${channel.group || ''}`.toLowerCase().includes(channelSearch.toLowerCase())), [loadedChannels, channelSearch]);
-
-  const restoreBars = useCallback(async () => {
-    try { await NativeStatusBar.show(); } catch { /* plugin may not be available on web */ }
-    if (typeof document !== 'undefined' && document.fullscreenElement && document.exitFullscreen) {
-      try { await document.exitFullscreen(); } catch { /* fullscreen exit is best effort */ }
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith('#EXTINF:')) {
+      const groupMatch = line.match(/group-title="([^"]*)"/i);
+      const logoMatch = line.match(/tvg-logo="([^"]*)"/i);
+      const commaIdx = line.lastIndexOf(',');
+      pendingGroup = groupMatch?.[1]?.trim() || 'قنوات عامة';
+      pendingLogo = logoMatch?.[1]?.trim() || '';
+      pendingName =
+        commaIdx !== -1 ? line.slice(commaIdx + 1).trim() : `قناة ${parsed.length + 1}`;
+    } else if (!line.startsWith('#') && /^https?:\/\//i.test(line)) {
+      parsed.push({
+        id: `ch_${parsed.length}_${Math.random().toString(36).slice(2, 7)}`,
+        name: pendingName || `قناة ${parsed.length + 1}`,
+        url: line,
+        group: pendingGroup,
+        logo: pendingLogo,
+      });
+      pendingName = '';
     }
-    setFullscreen(false);
-  }, []);
+  }
+  return parsed;
+}
 
-  const showBars = useCallback(async () => {
-    try { await NativeStatusBar.show(); } catch { /* plugin may not be available on web */ }
-    if (typeof document !== 'undefined' && document.fullscreenElement && document.exitFullscreen) {
-      try { await document.exitFullscreen(); } catch { /* browser fullscreen may be unsupported */ }
+/**
+ * تحليل الرابط أو كود التضمين لتحديد طريقة التشغيل المثلى
+ */
+function analyzeMediaInput(rawInput: string): {
+  mode: PlayerSourceMode;
+  cleanUrl: string;
+  rawHtml: string | null;
+  isM3uList: boolean;
+} {
+  const trimmed = (rawInput || '').trim();
+  if (!trimmed) {
+    return { mode: 'video', cleanUrl: '', rawHtml: null, isM3uList: false };
+  }
+
+  // 1. إذا كان المدخل كود HTML تضمين (<iframe ...> أو <embed ...>)
+  if (trimmed.startsWith('<') || /<iframe[\s>]/i.test(trimmed)) {
+    const iframeSrcMatch = trimmed.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+    if (iframeSrcMatch?.[1]) {
+      return {
+        mode: 'embed',
+        cleanUrl: iframeSrcMatch[1].trim(),
+        rawHtml: null,
+        isM3uList: false,
+      };
     }
-    setFullscreen(false);
-  }, []);
-
-  const hideBars = useCallback(async () => {
-    try { await NativeStatusBar.hide(); } catch { /* plugin may not be available on web */ }
-    if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.fullscreenElement) {
-      try { await (stageRef.current as any)?.requestFullscreen?.(); setFullscreen(true); } catch { /* requires user gesture or unsupported */ }
-    }
-  }, []);
-
-  const closePlayer = useCallback(() => {
-    if (closedRef.current) return;
-    closedRef.current = true;
-    hlsRef.current?.destroy();
-    hlsRef.current = null;
-    const video = videoRef.current;
-    if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
-    void restoreBars();
-    if (Capacitor.isNativePlatform()) void ScreenOrientation.unlock().catch(() => {});
-    else if (typeof screen !== 'undefined') (screen.orientation as any)?.unlock?.();
-    onCloseRef.current();
-  }, [restoreBars]);
-
-  // Back stack: dismiss drawer/popover, respect screen lock, then close the player.
-  useEffect(() => registerBackInterceptor(() => {
-    if (drawerRef.current) { setDrawerOpen(false); return true; }
-    if (popoverRef.current) { setQualityOpen(false); setFitOpen(false); return true; }
-    if (lockedRef.current) { setUnlockHint(true); setTimeout(() => setUnlockHint(false), 1800); return true; }
-    closePlayer();
-    return true;
-  }, 500), [closePlayer]);
-
-  useEffect(() => {
-    if (!forceLandscape) return undefined;
-    if (Capacitor.isNativePlatform()) {
-      void ScreenOrientation.lock({ orientation: 'landscape' }).catch(() => {});
-    } else if (typeof screen !== 'undefined') {
-      void (screen.orientation as any)?.lock?.('landscape')?.catch?.(() => {});
-    }
-    return () => {
-      if (Capacitor.isNativePlatform()) void ScreenOrientation.unlock().catch(() => {});
-      else if (typeof screen !== 'undefined') (screen.orientation as any)?.unlock?.();
+    const wrappedHtml = `<!DOCTYPE html><html dir="rtl"><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><style>*{box-sizing:border-box;margin:0;padding:0}html,body{width:100%;height:100%;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center}iframe,video,embed,object{width:100%!important;height:100%!important;border:0!important}</style></head><body>${trimmed}</body></html>`;
+    return {
+      mode: 'embed',
+      cleanUrl: '',
+      rawHtml: wrappedHtml,
+      isM3uList: false,
     };
+  }
+
+  const lower = trimmed.toLowerCase();
+
+  // 2. إذا كان ملف أو محتوى قائمة قنوات M3U
+  const isM3uList =
+    trimmed.startsWith('#EXTM3U') ||
+    ((lower.includes('.m3u') || lower.includes('type=m3u') || lower.includes('output=m3u')) &&
+      !lower.includes('.m3u8'));
+
+  if (isM3uList) {
+    return { mode: 'video', cleanUrl: trimmed, rawHtml: null, isM3uList: true };
+  }
+
+  // 3. إذا كان رابط فيديو مباشر أو بث HLS
+  const isDirectStream =
+    /\.(mp4|m3u8|webm|mkv|mov|ts|mp3|aac)(\?|#|$)/i.test(lower) ||
+    lower.includes('.m3u8') ||
+    lower.startsWith('blob:');
+
+  if (isDirectStream) {
+    return { mode: 'video', cleanUrl: trimmed, rawHtml: null, isM3uList: false };
+  }
+
+  // 4. أي رابط صفحة خارجية أو سيرفر تضمين يفتح في وضع Embed بسلاسة
+  return { mode: 'embed', cleanUrl: trimmed, rawHtml: null, isM3uList: false };
+}
+
+function formatTime(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return '00:00';
+  const total = Math.floor(sec);
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return hrs > 0 ? `${hrs}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
+}
+
+function ensureHlsLibrary(): Promise<any> {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  if ((window as any).Hls) return Promise.resolve((window as any).Hls);
+
+  return new Promise((resolve) => {
+    const existing = document.getElementById('enjoy-hls-cdn');
+    if (existing) {
+      existing.addEventListener('load', () => resolve((window as any).Hls || null));
+      existing.addEventListener('error', () => resolve(null));
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'enjoy-hls-cdn';
+    script.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';
+    script.async = true;
+    script.onload = () => resolve((window as any).Hls || null);
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+}
+
+export function EnjoyPlayer({
+  title = 'مشغل Enjoy',
+  subtitle,
+  url,
+  src,
+  embedCode,
+  qualities = [],
+  channels = [],
+  forceLandscape = true,
+  onClose,
+}: EnjoyPlayerProps) {
+  const initialRawInput = embedCode || url || src || '';
+  const initialAnalysis = useMemo(() => analyzeMediaInput(initialRawInput), [initialRawInput]);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const hlsRef = useRef<any>(null);
+  const progressBarRef = useRef<any>(null);
+
+  // حالة المصدر والتشغيل
+  const [sourceMode, setSourceMode] = useState<PlayerSourceMode>(initialAnalysis.mode);
+  const [activeUrl, setActiveUrl] = useState<string>(initialAnalysis.cleanUrl);
+  const [activeRawHtml, setActiveRawHtml] = useState<string | null>(initialAnalysis.rawHtml);
+  const [activeTitle, setActiveTitle] = useState<string>(title);
+
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isBuffering, setIsBuffering] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [bufferedEnd, setBufferedEnd] = useState(0);
+  const [isLiveStream, setIsLiveStream] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+
+  // حالات الواجهة والنظام
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
+  const [unlockHintVisible, setUnlockHintVisible] = useState(false);
+  const [aspectIndex, setAspectIndex] = useState(0);
+  const [badgeText, setBadgeText] = useState<string | null>(null);
+  const [seekRipple, setSeekRipple] = useState<'forward' | 'backward' | null>(null);
+
+  // الجودات وقنوات M3U
+  const [availableQualities, setAvailableQualities] = useState<VideoQualityOption[]>(qualities);
+  const [selectedQualityIdx, setSelectedQualityIdx] = useState<number>(0);
+  const [showQualityMenu, setShowQualityMenu] = useState(false);
+
+  const [m3uChannels, setM3uChannels] = useState<M3UChannel[]>(channels);
+  const [showChannelsDrawer, setShowChannelsDrawer] = useState(false);
+  const [channelSearch, setChannelSearch] = useState('');
+
+  // المراجع والمؤقتات
+  const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unlockHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const badgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTapTime = useRef(0);
+  const lastTapSide = useRef<'left' | 'center' | 'right'>('center');
+
+  const showTempBadge = useCallback((text: string) => {
+    setBadgeText(text);
+    if (badgeTimer.current) clearTimeout(badgeTimer.current);
+    badgeTimer.current = setTimeout(() => setBadgeText(null), 1400);
+  }, []);
+
+  // إخفاء وإظهار أشرطة نظام الهاتف (شريط الساعة والبطارية وأزرار التنقل)
+  const syncSystemBars = useCallback(async (visible: boolean) => {
+    try {
+      const capStatusBar = getCapacitorPlugin('StatusBar');
+      if (visible) {
+        if (capStatusBar?.show) await capStatusBar.show();
+      } else {
+        if (capStatusBar?.hide) await capStatusBar.hide();
+        if (typeof document !== 'undefined' && !document.fullscreenElement) {
+          document.documentElement.requestFullscreen?.().catch(() => {});
+        }
+      }
+    } catch {
+      // تجاهل في المتصفح
+    }
+  }, []);
+
+  // قفل الشاشة بالعرض تلقائياً فور فتح الفيلم أو المسلسل أو القناة
+  const lockLandscapeOrientation = useCallback(async () => {
+    if (!forceLandscape) return;
+    try {
+      const capOrientation = getCapacitorPlugin('ScreenOrientation');
+      if (capOrientation?.lock) {
+        await capOrientation.lock({ orientation: 'landscape' });
+      } else if (typeof screen !== 'undefined' && (screen as any).orientation?.lock) {
+        await (screen as any).orientation.lock('landscape').catch(() => {});
+      }
+    } catch {
+      // تجاهل
+    }
   }, [forceLandscape]);
 
-  useEffect(() => {
-    let cancelled = false;
-    let sourceUrl = currentUrl;
-    setLoading(true);
-    setError('');
-    setLevels([]);
-    setSelectedLevel(-1);
-    hlsRef.current?.destroy();
-    hlsRef.current = null;
-
-    const load = async () => {
-      if (sourceUrl.trim().startsWith('#EXTM3U') || isPlaylistUrl(sourceUrl)) {
-        if (sourceUrl.trim().startsWith('#EXTM3U')) {
-          const parsed = parseM3UPlaylist(sourceUrl);
-          setLoadedChannels(parsed);
-          if (!parsed.length) { setError('لم يتم العثور على قنوات في القائمة.'); setLoading(false); return; }
-          setActiveChannel(parsed[0]);
-          return;
-        }
-        try {
-          const response = await fetch(sourceUrl);
-          if (!response.ok) throw new Error('playlist request failed');
-          const parsed = parseM3UPlaylist(await response.text(), sourceUrl);
-          if (cancelled) return;
-          setLoadedChannels(parsed);
-          if (!parsed.length) throw new Error('empty playlist');
-          setActiveChannel(parsed[0]);
-          return;
-        } catch {
-          if (!cancelled) { setError('تعذر تحميل قائمة القنوات.'); setLoading(false); }
-          return;
-        }
+  const restoreDefaultOrientation = useCallback(async () => {
+    try {
+      if (typeof document !== 'undefined' && document.fullscreenElement) {
+        await document.exitFullscreen?.().catch(() => {});
       }
+      const capStatusBar = getCapacitorPlugin('StatusBar');
+      if (capStatusBar?.show) await capStatusBar.show();
 
-      const video = videoRef.current;
-      if (!video) return;
-      video.setAttribute('playsinline', 'true');
-      video.setAttribute('webkit-playsinline', 'true');
-      video.ontimeupdate = () => {
-        setTime(video.currentTime || 0);
-        if (video.buffered.length) setBuffered(video.buffered.end(video.buffered.length - 1));
+      const capOrientation = getCapacitorPlugin('ScreenOrientation');
+      if (capOrientation?.unlock) {
+        await capOrientation.unlock();
+      } else if (typeof screen !== 'undefined' && (screen as any).orientation?.unlock) {
+        (screen as any).orientation.unlock();
+      }
+    } catch {
+      // تجاهل
+    }
+  }, []);
+
+  // إخفاء أي مشغل أو iframe خلفي في الصفحة لمنع ظهوره تحت المشغل الجديد
+  useEffect(() => {
+    lockLandscapeOrientation();
+    syncSystemBars(true);
+
+    const hiddenElements: { el: HTMLElement; prevVisibility: string }[] = [];
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const rootNode = document.getElementById('enjoy-player-overlay');
+      document.querySelectorAll('iframe, video').forEach((node) => {
+        if (rootNode && rootNode.contains(node)) return;
+        const htmlEl = node as HTMLElement;
+        if (node.tagName === 'VIDEO') {
+          try {
+            (node as HTMLVideoElement).pause();
+          } catch {}
+        }
+        hiddenElements.push({ el: htmlEl, prevVisibility: htmlEl.style.visibility });
+        htmlEl.style.visibility = 'hidden';
+      });
+    }
+
+    return () => {
+      hiddenElements.forEach(({ el, prevVisibility }) => {
+        el.style.visibility = prevVisibility;
+      });
+      restoreDefaultOrientation();
+      if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+      if (unlockHintTimer.current) clearTimeout(unlockHintTimer.current);
+      if (badgeTimer.current) clearTimeout(badgeTimer.current);
+      if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
+    };
+  }, [lockLandscapeOrientation, restoreDefaultOrientation, syncSystemBars]);
+
+  const handleExitPlayer = useCallback(() => {
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+    restoreDefaultOrientation();
+    if (onClose) onClose();
+  }, [onClose, restoreDefaultOrientation]);
+
+  // ربط زرار الرجوع في الهاتف بالمشغل لمنع خروج البرنامج نهائياً
+  useEffect(() => {
+    return registerBackInterceptor(() => {
+      if (showChannelsDrawer) {
+        setShowChannelsDrawer(false);
+        return true;
+      }
+      if (showQualityMenu) {
+        setShowQualityMenu(false);
+        return true;
+      }
+      if (isLocked) {
+        setUnlockHintVisible(true);
+        if (unlockHintTimer.current) clearTimeout(unlockHintTimer.current);
+        unlockHintTimer.current = setTimeout(() => setUnlockHintVisible(false), 2500);
+        return true;
+      }
+      handleExitPlayer();
+      return true;
+    });
+  }, [showChannelsDrawer, showQualityMenu, isLocked, handleExitPlayer]);
+
+  // تحديث البيانات عند تغير الرابط القادم من الخارج
+  useEffect(() => {
+    const nextInput = embedCode || url || src || '';
+    const parsed = analyzeMediaInput(nextInput);
+    setActiveTitle(title);
+
+    if (parsed.isM3uList) {
+      let cancelled = false;
+      (async () => {
+        try {
+          setIsBuffering(true);
+          setErrorMsg(null);
+          const rawText = parsed.cleanUrl.startsWith('#EXTM3U')
+            ? parsed.cleanUrl
+            : await (await fetch(parsed.cleanUrl)).text();
+          const list = parseM3UPlaylist(rawText);
+          if (!cancelled && list.length > 0) {
+            setM3uChannels(list);
+            const firstAnalysis = analyzeMediaInput(list[0].url);
+            setSourceMode(firstAnalysis.mode);
+            setActiveUrl(firstAnalysis.cleanUrl);
+            setActiveRawHtml(firstAnalysis.rawHtml);
+            setActiveTitle(list[0].name);
+          } else if (!cancelled) {
+            setErrorMsg('تعذر استخراج قنوات صالحة من رابط M3U');
+            setIsBuffering(false);
+          }
+        } catch {
+          if (!cancelled) {
+            setErrorMsg('تعذر تحميل قائمة القنوات (تحقق من الاتصال أو الرابط)');
+            setIsBuffering(false);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
       };
-      video.ondurationchange = () => setDuration(Number.isFinite(video.duration) ? video.duration : 0);
-      video.onplay = () => setPlaying(true);
-      video.onpause = () => setPlaying(false);
-      video.onerror = () => { if (!cancelled) { setError('تعذر تشغيل الفيديو أو البث.'); setLoading(false); } };
+    } else {
+      setSourceMode(parsed.mode);
+      setActiveUrl(parsed.cleanUrl);
+      setActiveRawHtml(parsed.rawHtml);
+      if (channels.length > 0) setM3uChannels(channels);
+      if (parsed.mode === 'embed') {
+        setIsBuffering(false);
+        setErrorMsg(null);
+      }
+    }
+  }, [url, src, embedCode, title, channels]);
 
-      if (/\.m3u8(?:$|[?#])/i.test(sourceUrl) && Hls.isSupported()) {
-        const hls = new Hls({ enableWorker: true, lowLatencyMode: live, capLevelToPlayerSize: true });
-        hlsRef.current = hls;
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
-          if (cancelled) return;
-          setLevels(data.levels.map((level) => ({ height: level.height || 0, bitrate: level.bitrate || 0 })).sort((a, b) => b.height - a.height));
-          setLoading(false);
-          video.play().catch(() => {});
-        });
-        hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (!data.fatal || cancelled) return;
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-          else { setError('تعذر استعادة البث.'); setLoading(false); }
-        });
-        hls.loadSource(sourceUrl);
-      } else if (isVideoUrl(sourceUrl) || /^(blob:|https?:)/i.test(sourceUrl)) {
-        video.src = sourceUrl;
-        video.onloadedmetadata = () => { if (!cancelled) { setDuration(Number.isFinite(video.duration) ? video.duration : 0); setLoading(false); video.play().catch(() => {}); } };
-        video.load();
-      } else {
-        // Non-media page URLs retain the embed experience supported by the legacy player.
-        setLoading(false);
+  // محرك تشغيل الفيديو المباشر وروابط M3U8 وتعدد الجودات
+  useEffect(() => {
+    if (Platform.OS !== 'web' || sourceMode !== 'video' || !videoRef.current || !activeUrl) {
+      return;
+    }
+
+    const video = videoRef.current;
+    let destroyed = false;
+
+    setIsBuffering(true);
+    setErrorMsg(null);
+    setCurrentTime(0);
+    setDuration(0);
+
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    const isHlsSource =
+      activeUrl.toLowerCase().includes('.m3u8') || activeUrl.toLowerCase().includes('m3u8');
+
+    const startPlayback = () => {
+      video
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
+    };
+
+    if (isHlsSource) {
+      ensureHlsLibrary().then((Hls) => {
+        if (destroyed) return;
+        if (Hls && Hls.isSupported()) {
+          const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 60,
+          });
+          hlsRef.current = hls;
+          hls.loadSource(activeUrl);
+          hls.attachMedia(video);
+
+          hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
+            if (destroyed) return;
+            const levels = data?.levels || [];
+            if (levels.length > 0) {
+              const autoOpt: VideoQualityOption = {
+                label: 'تلقائي (Auto)',
+                url: activeUrl,
+                levelIndex: -1,
+              };
+              const levelOpts: VideoQualityOption[] = levels
+                .map((lvl: any, idx: number) => ({
+                  label: lvl.height ? `${lvl.height}p` : `جودة ${idx + 1}`,
+                  url: activeUrl,
+                  levelIndex: idx,
+                }))
+                .reverse();
+              setAvailableQualities([autoOpt, ...levelOpts]);
+              setSelectedQualityIdx(0);
+            }
+            startPlayback();
+          });
+
+          hls.on(Hls.Events.LEVEL_LOADED, (_: any, data: any) => {
+            if (!destroyed && data?.details) {
+              setIsLiveStream(Boolean(data.details.live));
+            }
+          });
+
+          hls.on(Hls.Events.ERROR, (_: any, data: any) => {
+            if (data?.fatal) {
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                hls.startLoad();
+              } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                hls.recoverMediaError();
+              } else {
+                setErrorMsg('تعذر تشغيل البث المباشر حالياً');
+                setIsBuffering(false);
+              }
+            }
+          });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = activeUrl;
+          startPlayback();
+        } else {
+          setErrorMsg('المتصفح لا يدعم تشغيل بث M3U8');
+          setIsBuffering(false);
+        }
+      });
+    } else {
+      video.src = activeUrl;
+      if (qualities.length > 0) setAvailableQualities(qualities);
+      startPlayback();
+    }
+
+    return () => {
+      destroyed = true;
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
       }
     };
-    void load();
-    return () => { cancelled = true; hlsRef.current?.destroy(); hlsRef.current = null; };
-  }, [currentUrl, live]);
+  }, [sourceMode, activeUrl, qualities]);
 
-  useEffect(() => {
-    if (!channels.length) return;
-    setLoadedChannels(channels);
-  }, [channels]);
-
-  useEffect(() => {
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-    if (controlsVisible && playing && !locked) {
-      hideTimer.current = setTimeout(() => {
+  // إخفاء تلقائي لعناصر التحكم وأشرطة الهاتف بعد 4 ثوانٍ في وضع الفيديو المباشر
+  const scheduleAutoHide = useCallback(() => {
+    if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+    if (sourceMode === 'embed') return;
+    hideControlsTimer.current = setTimeout(() => {
+      if (!showQualityMenu && !showChannelsDrawer) {
         setControlsVisible(false);
-        setQualityOpen(false);
-        setFitOpen(false);
-        void hideBars();
-      }, 4000);
+        syncSystemBars(false);
+      }
+    }, 4000);
+  }, [sourceMode, showQualityMenu, showChannelsDrawer, syncSystemBars]);
+
+  useEffect(() => {
+    if (
+      sourceMode === 'video' &&
+      controlsVisible &&
+      isPlaying &&
+      !isLocked &&
+      !showQualityMenu &&
+      !showChannelsDrawer
+    ) {
+      scheduleAutoHide();
+    } else if (hideControlsTimer.current) {
+      clearTimeout(hideControlsTimer.current);
     }
-    return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
-  }, [controlsVisible, playing, locked, hideBars]);
+  }, [
+    sourceMode,
+    controlsVisible,
+    isPlaying,
+    isLocked,
+    showQualityMenu,
+    showChannelsDrawer,
+    scheduleAutoHide,
+  ]);
 
-  const toggleControls = useCallback(() => {
-    if (locked) { setUnlockHint(true); setTimeout(() => setUnlockHint(false), 1800); return; }
-    const show = !controlsVisible;
-    setControlsVisible(show);
-    setQualityOpen(false);
-    setFitOpen(false);
-    if (show) void showBars();
-    else void hideBars();
-  }, [controlsVisible, hideBars, locked, showBars]);
-
-  const seek = useCallback((amount: number) => {
+  const seekBySeconds = useCallback((delta: number) => {
     const video = videoRef.current;
-    if (!video || live) return;
-    video.currentTime = Math.max(0, Math.min(video.currentTime + amount, video.duration || 0));
-    setSeekFeedback(amount < 0 ? '-10 ثوانٍ' : '+10 ثوانٍ');
-    setTimeout(() => setSeekFeedback(''), 900);
-  }, [live]);
+    if (!video || !Number.isFinite(video.duration)) return;
+    const nextTime = Math.max(0, Math.min(video.duration, video.currentTime + delta));
+    video.currentTime = nextTime;
+    setCurrentTime(nextTime);
+    setSeekRipple(delta > 0 ? 'forward' : 'backward');
+    setTimeout(() => setSeekRipple(null), 550);
+  }, []);
 
-  const onStageTouchEnd = (event: any) => {
-    if (locked) { setUnlockHint(true); setTimeout(() => setUnlockHint(false), 1800); return; }
+  // لمسة واحدة تخفي كل شيء (بما فيها شريط الهاتف) ولمسة ثانية تظهرها + لمستين للتقديم/التأخير
+  const handleSurfacePress = (evt: any) => {
+    lockLandscapeOrientation();
+
+    if (showQualityMenu || showChannelsDrawer) {
+      setShowQualityMenu(false);
+      setShowChannelsDrawer(false);
+      return;
+    }
+
+    if (isLocked) {
+      setUnlockHintVisible((prev) => !prev);
+      if (unlockHintTimer.current) clearTimeout(unlockHintTimer.current);
+      unlockHintTimer.current = setTimeout(() => setUnlockHintVisible(false), 3000);
+      return;
+    }
+
     const now = Date.now();
-    if (now - lastTapRef.current < 280) {
-      const width = (stageRef.current as any)?.getBoundingClientRect?.().width || 0;
-      const x = event.nativeEvent?.pageX ?? event.nativeEvent?.locationX ?? 0;
-      if (width && x < width / 3) seek(-10);
-      else if (width && x > width * 2 / 3) seek(10);
-      lastTapRef.current = 0;
-    } else lastTapRef.current = now;
+    const locationX = evt?.nativeEvent?.locationX ?? 200;
+    const screenW = typeof window !== 'undefined' ? window.innerWidth : 800;
+    const side: 'left' | 'center' | 'right' =
+      locationX < screenW * 0.33 ? 'left' : locationX > screenW * 0.67 ? 'right' : 'center';
+
+    if (
+      sourceMode === 'video' &&
+      now - lastTapTime.current < 260 &&
+      side !== 'center' &&
+      side === lastTapSide.current
+    ) {
+      if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
+      lastTapTime.current = 0;
+      seekBySeconds(side === 'right' ? 10 : -10);
+      return;
+    }
+
+    lastTapTime.current = now;
+    lastTapSide.current = side;
+
+    if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
+    singleTapTimer.current = setTimeout(() => {
+      setControlsVisible((prev) => {
+        const next = !prev;
+        syncSystemBars(next);
+        return next;
+      });
+    }, 230);
   };
 
-  const setQuality = (index: number) => {
-    if (hlsRef.current) hlsRef.current.currentLevel = index;
-    setSelectedLevel(index);
-    setQualityOpen(false);
+  const togglePlayPause = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      video.play().then(() => setIsPlaying(true)).catch(() => {});
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
   };
 
-  const customQualities = qualities.map((quality) => typeof quality === 'string' ? { label: quality } : quality);
-  const qualityOptions = useMemo(() => {
-    const auto: PlayerQuality[] = [{ label: 'Auto' }];
-    const parsed: PlayerQuality[] = levels.filter((level) => [1080, 720, 480, 360].includes(level.height)).map((level) => ({ label: `${level.height}p`, height: level.height, bitrate: level.bitrate }));
-    const combined = [...auto, ...(customQualities.length ? customQualities : parsed)];
-    return combined.filter((item, index) => combined.findIndex((other) => other.label === item.label) === index);
-  }, [customQualities, levels]);
-  const progress = duration > 0 ? Math.min(100, (time / duration) * 100) : 0;
-  const bufferedProgress = duration > 0 ? Math.min(100, (buffered / duration) * 100) : 0;
-  const fitLabel = fitOptions.find((option) => option.mode === fit)?.label || 'ملاءمة';
-  const customCurrent = customQualities.find((quality) => quality.label === qualityOptions[selectedLevel + 1]?.label);
-  const embedUrl = !isVideoUrl(currentUrl) && !currentUrl.trim().startsWith('#EXTM3U') && !isPlaylistUrl(currentUrl) ? currentUrl : '';
+  const handleSelectQuality = (index: number) => {
+    const chosen = availableQualities[index];
+    if (!chosen) return;
+    setSelectedQualityIdx(index);
+    setShowQualityMenu(false);
+    showTempBadge(`الجودة: ${chosen.label}`);
+
+    if (hlsRef.current && typeof chosen.levelIndex === 'number') {
+      hlsRef.current.currentLevel = chosen.levelIndex;
+    } else if (chosen.url && chosen.url !== activeUrl && videoRef.current) {
+      const savedTime = videoRef.current.currentTime;
+      setActiveUrl(chosen.url);
+      setTimeout(() => {
+        if (videoRef.current) videoRef.current.currentTime = savedTime;
+      }, 400);
+    }
+  };
+
+  const cycleAspectRatio = () => {
+    const nextIdx = (aspectIndex + 1) % ASPECT_MODES.length;
+    setAspectIndex(nextIdx);
+    showTempBadge(`الأبعاد: ${ASPECT_MODES[nextIdx].label}`);
+  };
+
+  const handleProgressBarPress = (evt: any) => {
+    const video = videoRef.current;
+    if (!video || !duration || isLiveStream) return;
+    const touchX = evt?.nativeEvent?.locationX ?? 0;
+    const barWidth =
+      progressBarRef.current?.clientWidth ||
+      (typeof window !== 'undefined' ? window.innerWidth - 48 : 300);
+    const ratio = Math.max(0, Math.min(1, touchX / barWidth));
+    const targetTime = ratio * duration;
+    video.currentTime = targetTime;
+    setCurrentTime(targetTime);
+  };
+
+  const currentAspect = ASPECT_MODES[aspectIndex];
+  const progressPercent = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const bufferedPercent = duration > 0 ? Math.min(100, (bufferedEnd / duration) * 100) : 0;
+
+  const filteredChannels = m3uChannels.filter(
+    (ch) =>
+      ch.name.toLowerCase().includes(channelSearch.toLowerCase()) ||
+      (ch.group && ch.group.toLowerCase().includes(channelSearch.toLowerCase()))
+  );
 
   return (
-    <View ref={stageRef as any} style={styles.overlay} onTouchEnd={onStageTouchEnd}>
-      {embedUrl ? <iframe src={embedUrl} title={title} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ width: '100%', height: '100%', border: 0, background: '#000' }} /> : <video ref={videoRef as any} style={[styles.video as any, { objectFit: fit === 'zoom' ? 'cover' : fit, transform: fit === 'zoom' ? [{ scale: 1.15 }] : undefined }]} playsInline />}
-      {!loading && !error && !embedUrl && !locked && <Pressable style={styles.tapLayer} onPress={toggleControls} accessibilityLabel="Toggle player controls" />}
-      {loading && <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /><Text style={styles.message}>جارٍ التحميل…</Text></View>}
-      {!!error && <View style={styles.center}><Text style={styles.error}>{error}</Text><Pressable style={styles.actionButton} onPress={() => { setError(''); setLoading(true); setActiveChannel(null); }}><Text style={styles.actionText}>إعادة المحاولة</Text></Pressable></View>}
+    <View nativeID="enjoy-player-overlay" style={styles.rootContainer}>
+      <StatusBar hidden={!controlsVisible || isLocked} style="light" />
 
-      {seekFeedback ? <View pointerEvents="none" style={styles.seekFeedback}><Text style={styles.seekFeedbackText}>{seekFeedback}</Text></View> : null}
-      {fitBadge ? <View pointerEvents="none" style={styles.fitBadge}><Text style={styles.actionText}>{fitBadge}</Text></View> : null}
-      {locked ? <View style={styles.lockOverlay} pointerEvents="box-none">
-        <Pressable style={styles.unlockButton} onPress={() => { setLocked(false); setControlsVisible(true); setUnlockHint(false); void showBars(); }}><Unlock color="#fff" size={20} /><Text style={styles.actionText}>اضغط لفتح القفل</Text></Pressable>
-        {unlockHint ? <Text style={styles.unlockHint}>اضغط لفتح القفل</Text> : null}
-      </View> : null}
+      {/* 1. طبقة العرض: إما فيديو مباشر/M3U8 أو مشغل التضمين Embed */}
+      {Platform.OS === 'web' && sourceMode === 'video' && (
+        <video
+          ref={videoRef}
+          playsInline
+          autoPlay
+          muted={isMuted}
+          onWaiting={() => setIsBuffering(true)}
+          onPlaying={() => {
+            setIsBuffering(false);
+            setIsPlaying(true);
+          }}
+          onPause={() => setIsPlaying(false)}
+          onTimeUpdate={(e) => {
+            const v = e.currentTarget;
+            setCurrentTime(v.currentTime);
+            if (v.buffered.length > 0) {
+              setBufferedEnd(v.buffered.end(v.buffered.length - 1));
+            }
+          }}
+          onLoadedMetadata={(e) => {
+            setDuration(e.currentTarget.duration);
+            setIsBuffering(false);
+          }}
+          onError={() => {
+            // إذا فشل الرابط كفيديو مباشر وكان رابط HTTP، نحوله تلقائياً لوضع التضمين
+            if (activeUrl && /^https?:\/\//i.test(activeUrl) && !activeUrl.includes('.m3u8')) {
+              setSourceMode('embed');
+              setIsBuffering(false);
+              setErrorMsg(null);
+            } else {
+              setIsBuffering(false);
+              setErrorMsg('تعذر تشغيل هذا الرابط حالياً');
+            }
+          }}
+          style={{
+            width: '100%',
+            height: '100%',
+            backgroundColor: '#000',
+            objectFit: currentAspect.key === 'zoom' ? 'cover' : currentAspect.key,
+            transform: currentAspect.key === 'zoom' ? 'scale(1.18)' : 'none',
+            transition: 'transform 0.25s ease',
+          }}
+        />
+      )}
 
-      {controlsVisible && !loading && !error && !locked && <>
-        <View style={styles.topBar}>
-          <Pressable style={styles.iconButton} onPress={closePlayer} accessibilityLabel="إغلاق المشغل"><X color="#fff" size={23} /></Pressable>
-          <View style={styles.titleArea}><Text numberOfLines={1} style={styles.title}>{activeChannel?.name || title}</Text>{subtitle ? <Text numberOfLines={1} style={styles.subtitle}>{subtitle}</Text> : null}</View>
-          <Pressable style={styles.iconButton} onPress={() => { setLocked(true); setControlsVisible(false); setQualityOpen(false); setFitOpen(false); void hideBars(); }} accessibilityLabel="قفل الشاشة"><Lock color="#fff" size={19} /></Pressable>
-          <Pressable style={styles.iconButton} onPress={() => setMuted((value) => { const next = !value; if (videoRef.current) videoRef.current.muted = next; return next; })}>{muted ? <VolumeX color="#fff" size={19} /> : <Volume2 color="#fff" size={19} />}</Pressable>
-          {loadedChannels.length > 0 ? <Pressable style={styles.pillButton} onPress={() => { setDrawerOpen(true); setQualityOpen(false); setFitOpen(false); void showBars(); }}><Tv size={16} color="#fff" /><Text style={styles.actionText}>القنوات</Text></Pressable> : null}
+      {Platform.OS === 'web' && sourceMode === 'embed' && (
+        <View style={styles.embedStage}>
+          <iframe
+            src={activeRawHtml ? undefined : activeUrl}
+            srcDoc={activeRawHtml || undefined}
+            allowFullScreen
+            allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+            onLoad={() => setIsBuffering(false)}
+            style={{
+              width: '100%',
+              height: '100%',
+              border: 'none',
+              backgroundColor: '#000',
+              transform:
+                currentAspect.zoomScale > 1 ? `scale(${currentAspect.zoomScale})` : 'none',
+              transition: 'transform 0.25s ease',
+            }}
+          />
         </View>
-        {!embedUrl && <View style={styles.centerControls}>
-          {!live && <Pressable style={styles.seekButton} onPress={() => seek(-10)}><RotateCcw size={23} color="#fff" /><Text style={styles.seekLabel}>-10s</Text></Pressable>}
-          <Pressable style={styles.playButton} onPress={() => { const video = videoRef.current; if (!video) return; if (video.paused) video.play().catch(() => {}); else video.pause(); }}>{playing ? <Pause size={32} color="#fff" fill="#fff" /> : <Play size={32} color="#fff" fill="#fff" />}</Pressable>
-          {!live && <Pressable style={styles.seekButton} onPress={() => seek(10)}><RotateCw size={23} color="#fff" /><Text style={styles.seekLabel}>+10s</Text></Pressable>}
-        </View>}
-        {!live && !embedUrl && <View style={styles.bottomBar}>
-          <Pressable style={styles.progressTrack} onPress={(event: any) => {
-            const video = videoRef.current;
-            const rect = event.currentTarget?.getBoundingClientRect?.();
-            const location = event.nativeEvent?.locationX ?? event.nativeEvent?.offsetX ?? 0;
-            if (video && rect?.width && duration) video.currentTime = Math.max(0, Math.min(1, location / rect.width)) * duration;
-          }}><View style={[styles.bufferedTrack, { width: `${bufferedProgress}%` }]} /><View style={[styles.playedTrack, { width: `${progress}%` }]} /></Pressable>
-          <View style={styles.bottomControls}><Text style={styles.timeText}>{formatTime(time)} / {formatTime(duration)}</Text><View style={styles.spacer} />
-            <Pressable style={styles.pillButton} onPress={() => { setFitOpen((value) => !value); setQualityOpen(false); }}><Text style={styles.actionText}>{fitLabel}</Text></Pressable>
-            {!!qualityOptions.length && <Pressable style={styles.pillButton} onPress={() => { setQualityOpen((value) => !value); setFitOpen(false); }}><Settings size={16} color="#fff" /><Text style={styles.actionText}>{selectedLevel < 0 ? 'Auto' : qualityOptions[selectedLevel + 1]?.label}</Text></Pressable>}
-            <Pressable style={styles.iconButton} onPress={() => { if (typeof document !== 'undefined' && document.fullscreenElement) void showBars(); else void hideBars(); }}>{fullscreen ? <Minimize size={19} color="#fff" /> : <Maximize size={19} color="#fff" />}</Pressable>
+      )}
+
+      {/* 2. طبقة استشعار اللمس (تغطي الفيديو بالكامل، وتُفعّل كدرع حماية فوق التضمين عند القفل) */}
+      {(sourceMode === 'video' || isLocked) && (
+        <Pressable style={styles.touchLayer} onPress={handleSurfacePress} />
+      )}
+
+      {/* 3. زر عائم صغير لإظهار/إخفاء الشريط في وضع التضمين حتى لا يمنع التفاعل مع المشغل المضمّن */}
+      {sourceMode === 'embed' && !isLocked && (
+        <Pressable
+          style={styles.embedTogglePill}
+          onPress={() => {
+            setControlsVisible((prev) => {
+              const next = !prev;
+              syncSystemBars(next);
+              return next;
+            });
+          }}
+        >
+          {controlsVisible ? (
+            <EyeOff size={16} color="#FFF" />
+          ) : (
+            <Eye size={16} color="#FFF" />
+          )}
+        </Pressable>
+      )}
+
+      {/* مؤشر التحميل */}
+      {isBuffering && !errorMsg && (
+        <View pointerEvents="none" style={styles.centerOverlay}>
+          <View style={styles.loaderPill}>
+            <ActivityIndicator size="large" color="#E50914" />
+            <Text style={styles.loaderText}>جاري التشغيل...</Text>
           </View>
-        </View>}
-        {qualityOpen && <View style={styles.menu}>{qualityOptions.map((option, index) => <Pressable key={option.label} style={styles.menuItem} onPress={() => {
-          if (option.url) { setActiveChannel(null); if (videoRef.current) { videoRef.current.src = option.url; videoRef.current.play().catch(() => {}); } }
-          else if (customQualities.length && option.label !== 'Auto') {
-            const q = customQualities.find((item) => item.label === option.label);
-            if (q?.url && videoRef.current) { videoRef.current.src = q.url; videoRef.current.play().catch(() => {}); }
-            else setQuality(index === 0 ? -1 : levels.findIndex((level) => level.height === q?.height));
-          } else setQuality(index === 0 ? -1 : levels.findIndex((level) => level.height === option.height));
-          setQualityOpen(false);
-        }}><Text style={styles.actionText}>{option.label}</Text></Pressable>)}</View>}
-        {fitOpen && <View style={[styles.menu, styles.fitMenu]}>{fitOptions.map((option) => <Pressable key={option.mode} style={styles.menuItem} onPress={() => { setFit(option.mode); setFitBadge(option.label); setFitOpen(false); setTimeout(() => setFitBadge(''), 1600); }}><Text style={styles.actionText}>{option.label}</Text></Pressable>)}</View>}
-      </>}
-
-      {drawerOpen && <View style={styles.drawerBackdrop}>
-        <Pressable style={styles.drawerScrim} onPress={() => setDrawerOpen(false)} />
-        <View style={styles.drawer}>
-          <View style={styles.drawerHeader}><Text style={styles.drawerTitle}>القنوات</Text><Pressable style={styles.iconButton} onPress={() => setDrawerOpen(false)}><X size={20} color="#fff" /></Pressable></View>
-          <TextInput value={channelSearch} onChangeText={setChannelSearch} placeholder="ابحث عن قناة…" placeholderTextColor="#999" style={styles.searchInput} />
-          <ScrollView keyboardShouldPersistTaps="handled">{visibleChannels.map((channel) => <Pressable key={channel.id} style={styles.channelRow} onPress={() => { setActiveChannel(channel); setDrawerOpen(false); setControlsVisible(true); }}>
-            {channel.logo ? <Image source={{ uri: channel.logo }} style={styles.logo} /> : <Tv size={24} color="#aaa" />}
-            <View style={{ flex: 1 }}><Text style={styles.channelName}>{channel.name}</Text>{channel.group ? <Text style={styles.subtitle}>{channel.group}</Text> : null}</View>
-            {activeChannel?.id === channel.id ? <Text style={styles.liveTag}>LIVE</Text> : null}
-          </Pressable>)}</ScrollView>
         </View>
-      </View>}
+      )}
+
+      {/* رسالة الخطأ */}
+      {errorMsg && (
+        <View style={styles.centerOverlay}>
+          <View style={styles.errorCard}>
+            <AlertCircle size={32} color="#FF5252" />
+            <Text style={styles.errorTitle}>{errorMsg}</Text>
+            <Pressable
+              style={styles.retryButton}
+              onPress={() => {
+                setErrorMsg(null);
+                setActiveUrl((prev) => prev + '');
+              }}
+            >
+              <Text style={styles.retryButtonText}>إعادة المحاولة</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {/* تأثير التقديم والتأخير السريع */}
+      {seekRipple && (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.rippleBadge,
+            seekRipple === 'forward' ? { right: 48 } : { left: 48 },
+          ]}
+        >
+          {seekRipple === 'forward' ? (
+            <RotateCw size={26} color="#FFF" />
+          ) : (
+            <RotateCcw size={26} color="#FFF" />
+          )}
+          <Text style={styles.rippleText}>
+            {seekRipple === 'forward' ? '+10 ثوانٍ' : '-10 ثوانٍ'}
+          </Text>
+        </View>
+      )}
+
+      {/* شارة الإشعارات السريعة */}
+      {badgeText && (
+        <View pointerEvents="none" style={styles.topCenterBadge}>
+          <Text style={styles.topCenterBadgeText}>{badgeText}</Text>
+        </View>
+      )}
+
+      {/* زر فك القفل */}
+      {isLocked && unlockHintVisible && (
+        <View style={styles.unlockFloatingWrapper}>
+          <Pressable
+            style={styles.unlockButton}
+            onPress={() => {
+              setIsLocked(false);
+              setControlsVisible(true);
+              syncSystemBars(true);
+              showTempBadge('تم فتح قفل الشاشة');
+            }}
+          >
+            <Unlock size={20} color="#FFF" />
+            <Text style={styles.unlockText}>اضغط لفتح القفل</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* 4. واجهة التحكم الاحترافية */}
+      {controlsVisible && !isLocked && (
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.controlsOverlay,
+            sourceMode === 'embed' && { backgroundColor: 'transparent' },
+          ]}
+        >
+          {/* الشريط العلوي (يظهر في وضع الفيديو ووضع التضمين) */}
+          <View style={styles.topBar}>
+            <View style={styles.topLeftGroup}>
+              <Pressable style={styles.iconCircleBtn} onPress={handleExitPlayer}>
+                <ArrowRight size={22} color="#FFF" />
+              </Pressable>
+              <View style={styles.titleBlock}>
+                <Text numberOfLines={1} style={styles.videoTitle}>
+                  {activeTitle}
+                </Text>
+                {subtitle ? (
+                  <Text numberOfLines={1} style={styles.videoSubtitle}>
+                    {subtitle}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+
+            <View style={styles.topRightGroup}>
+              {m3uChannels.length > 0 && (
+                <Pressable
+                  style={styles.pillBtn}
+                  onPress={() => setShowChannelsDrawer(true)}
+                >
+                  <Tv size={18} color="#FFF" />
+                  <Text style={styles.pillBtnText}>القنوات ({m3uChannels.length})</Text>
+                </Pressable>
+              )}
+
+              <Pressable style={styles.pillBtn} onPress={cycleAspectRatio}>
+                <Maximize size={17} color="#FFF" />
+                <Text style={styles.pillBtnText}>{currentAspect.label}</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.iconCircleBtn}
+                onPress={() => {
+                  setIsLocked(true);
+                  setControlsVisible(false);
+                  setUnlockHintVisible(true);
+                  syncSystemBars(false);
+                  if (unlockHintTimer.current) clearTimeout(unlockHintTimer.current);
+                  unlockHintTimer.current = setTimeout(() => setUnlockHintVisible(false), 2500);
+                }}
+              >
+                <Lock size={20} color="#FFF" />
+              </Pressable>
+            </View>
+          </View>
+
+          {/* أزرار المنتصف والشريط السفلي (تظهر في وضع الفيديو المباشر و M3U8) */}
+          {sourceMode === 'video' && (
+            <>
+              <View pointerEvents="box-none" style={styles.centerControlsRow}>
+                {!isLiveStream && (
+                  <Pressable style={styles.seekCircleBtn} onPress={() => seekBySeconds(-10)}>
+                    <RotateCcw size={26} color="#FFF" />
+                    <Text style={styles.seekSubLabel}>10</Text>
+                  </Pressable>
+                )}
+
+                <Pressable style={styles.playPauseMainBtn} onPress={togglePlayPause}>
+                  {isPlaying ? (
+                    <Pause size={34} color="#FFF" fill="#FFF" />
+                  ) : (
+                    <Play size={34} color="#FFF" fill="#FFF" />
+                  )}
+                </Pressable>
+
+                {!isLiveStream && (
+                  <Pressable style={styles.seekCircleBtn} onPress={() => seekBySeconds(10)}>
+                    <RotateCw size={26} color="#FFF" />
+                    <Text style={styles.seekSubLabel}>10</Text>
+                  </Pressable>
+                )}
+              </View>
+
+              <View style={styles.bottomBar}>
+                {!isLiveStream ? (
+                  <View style={styles.progressSection}>
+                    <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
+                    <Pressable
+                      ref={progressBarRef}
+                      style={styles.progressTrackHitArea}
+                      onPress={handleProgressBarPress}
+                    >
+                      <View style={styles.progressTrackBg}>
+                        <View
+                          style={[styles.progressBuffered, { width: `${bufferedPercent}%` }]}
+                        />
+                        <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                      </View>
+                      <View style={[styles.progressThumb, { left: `${progressPercent}%` }]} />
+                    </Pressable>
+                    <Text style={styles.timeText}>{formatTime(duration)}</Text>
+                  </View>
+                ) : (
+                  <View style={styles.liveIndicatorRow}>
+                    <View style={styles.liveDot} />
+                    <Text style={styles.liveLabel}>بث مباشر LIVE</Text>
+                  </View>
+                )}
+
+                <View style={styles.bottomActionsRow}>
+                  <Pressable
+                    style={styles.iconCircleBtn}
+                    onPress={() => setIsMuted((m) => !m)}
+                  >
+                    {isMuted ? (
+                      <VolumeX size={20} color="#FF5252" />
+                    ) : (
+                      <Volume2 size={20} color="#FFF" />
+                    )}
+                  </Pressable>
+
+                  <View style={styles.bottomRightTools}>
+                    {availableQualities.length > 0 && (
+                      <Pressable
+                        style={styles.pillBtn}
+                        onPress={() => setShowQualityMenu((v) => !v)}
+                      >
+                        <Settings size={17} color="#FFF" />
+                        <Text style={styles.pillBtnText}>
+                          {availableQualities[selectedQualityIdx]?.label || 'الجودة'}
+                        </Text>
+                      </Pressable>
+                    )}
+
+                    <Pressable style={styles.pillBtn} onPress={cycleAspectRatio}>
+                      <Maximize size={17} color="#FFF" />
+                      <Text style={styles.pillBtnText}>{currentAspect.label}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            </>
+          )}
+        </View>
+      )}
+
+      {/* قائمة اختيار الجودة */}
+      {showQualityMenu && (
+        <View style={styles.popoverCard}>
+          <View style={styles.popoverHeader}>
+            <Text style={styles.popoverTitle}>جودة الفيديو</Text>
+            <Pressable onPress={() => setShowQualityMenu(false)}>
+              <X size={20} color="#AAA" />
+            </Pressable>
+          </View>
+          <ScrollView style={{ maxHeight: 220 }}>
+            {availableQualities.map((q, idx) => {
+              const active = idx === selectedQualityIdx;
+              return (
+                <Pressable
+                  key={`${q.label}_${idx}`}
+                  style={[styles.qualityRow, active && styles.qualityRowActive]}
+                  onPress={() => handleSelectQuality(idx)}
+                >
+                  <Text style={[styles.qualityText, active && styles.qualityTextActive]}>
+                    {q.label}
+                  </Text>
+                  {active && <Check size={18} color="#E50914" />}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* درج قنوات M3U الجانبي */}
+      {showChannelsDrawer && (
+        <View style={styles.drawerOverlay}>
+          <View style={styles.drawerPanel}>
+            <View style={styles.drawerHeader}>
+              <Text style={styles.drawerTitle}>القنوات المباشرة ({m3uChannels.length})</Text>
+              <Pressable onPress={() => setShowChannelsDrawer(false)}>
+                <X size={22} color="#FFF" />
+              </Pressable>
+            </View>
+
+            <View style={styles.searchBox}>
+              <Search size={16} color="#999" />
+              <TextInput
+                value={channelSearch}
+                onChangeText={setChannelSearch}
+                placeholder="ابحث عن قناة..."
+                placeholderTextColor="#777"
+                style={styles.searchInput}
+              />
+            </View>
+
+            <ScrollView style={{ flex: 1 }}>
+              {filteredChannels.map((ch) => {
+                const isCurrent = ch.url === activeUrl;
+                return (
+                  <Pressable
+                    key={ch.id}
+                    style={[styles.channelItem, isCurrent && styles.channelItemActive]}
+                    onPress={() => {
+                      const chAnalysis = analyzeMediaInput(ch.url);
+                      setSourceMode(chAnalysis.mode);
+                      setActiveUrl(chAnalysis.cleanUrl);
+                      setActiveRawHtml(chAnalysis.rawHtml);
+                      setActiveTitle(ch.name);
+                      setShowChannelsDrawer(false);
+                      showTempBadge(`تم التشغيل: ${ch.name}`);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text numberOfLines={1} style={styles.channelName}>
+                        {ch.name}
+                      </Text>
+                      {ch.group ? <Text style={styles.channelGroup}>{ch.group}</Text> : null}
+                    </View>
+                    {isCurrent && <Play size={16} color="#E50914" fill="#E50914" />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 9999, backgroundColor: '#000', overflow: 'hidden' },
-  video: { width: '100%', height: '100%', backgroundColor: '#000' },
-  tapLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'transparent' },
-  center: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.65)', gap: Spacing.md, padding: Spacing.xl },
-  message: { color: '#fff', fontSize: FontSize.md }, error: { color: '#fff', fontSize: FontSize.md, textAlign: 'center' },
-  actionButton: { backgroundColor: Colors.primary, borderRadius: Radius.md, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
-  actionText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
-  topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.md, backgroundColor: 'rgba(0,0,0,0.55)' },
-  titleArea: { flex: 1 }, title: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' }, subtitle: { color: '#bbb', fontSize: FontSize.xs },
-  iconButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)' },
-  pillButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: Radius.sm, backgroundColor: 'rgba(255,255,255,0.16)' },
-  centerControls: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 24 },
-  playButton: { width: 66, height: 66, borderRadius: 33, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
-  seekButton: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)' }, seekLabel: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  bottomBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, paddingBottom: Spacing.lg, backgroundColor: 'rgba(0,0,0,0.68)' },
-  progressTrack: { height: 6, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.28)', overflow: 'hidden', marginBottom: Spacing.sm },
-  bufferedTrack: { position: 'absolute', top: 0, bottom: 0, left: 0, backgroundColor: 'rgba(255,255,255,0.45)' }, playedTrack: { position: 'absolute', top: 0, bottom: 0, left: 0, backgroundColor: Colors.primary },
-  bottomControls: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }, timeText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '600' }, spacer: { flex: 1 },
-  menu: { position: 'absolute', right: Spacing.lg, bottom: 78, minWidth: 120, maxHeight: 240, padding: 6, borderRadius: Radius.md, backgroundColor: '#171717' }, fitMenu: { right: 150 }, menuItem: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
-  lockOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center' }, unlockButton: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderRadius: Radius.lg, backgroundColor: 'rgba(0,0,0,0.78)' }, unlockHint: { position: 'absolute', bottom: 36, color: '#fff', backgroundColor: '#222', padding: 10, borderRadius: 8 },
-  seekFeedback: { position: 'absolute', top: '45%', alignSelf: 'center', paddingHorizontal: 22, paddingVertical: 12, borderRadius: 30, backgroundColor: 'rgba(0,0,0,0.68)' }, seekFeedbackText: { color: '#fff', fontSize: FontSize.lg, fontWeight: '800' }, fitBadge: { position: 'absolute', top: 60, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 },
-  drawerBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.45)' }, drawerScrim: { flex: 1 }, drawer: { width: 'min(360px, 85%)', maxWidth: 360, backgroundColor: '#111', padding: Spacing.md, paddingTop: Spacing.xl }, drawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md }, drawerTitle: { color: '#fff', fontSize: FontSize.xl, fontWeight: '800' }, searchInput: { height: 42, borderRadius: Radius.md, backgroundColor: '#242424', color: '#fff', paddingHorizontal: Spacing.md, marginBottom: Spacing.sm }, channelRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#333' }, logo: { width: 40, height: 40, resizeMode: 'contain' }, channelName: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700' }, liveTag: { color: '#fff', backgroundColor: '#d22', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 4, fontSize: 10, fontWeight: '800' },
+  rootContainer: {
+    position: 'fixed' as any,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#000000',
+    zIndex: 99999,
+  },
+  embedStage: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000000',
+    overflow: 'hidden',
+    zIndex: 1,
+  },
+  touchLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 5,
+  },
+  embedTogglePill: {
+    position: 'absolute',
+    bottom: 18,
+    left: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(15, 17, 23, 0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 35,
+  },
+  centerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 15,
+  },
+  loaderPill: {
+    backgroundColor: 'rgba(15, 17, 23, 0.88)',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    gap: 8,
+  },
+  loaderText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  errorCard: {
+    backgroundColor: 'rgba(20, 22, 28, 0.96)',
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  errorTitle: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#E50914',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  retryButtonText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  rippleBadge: {
+    position: 'absolute',
+    top: '44%',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 999,
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  rippleText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  topCenterBadge: {
+    position: 'absolute',
+    top: 74,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(15, 17, 23, 0.92)',
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    zIndex: 30,
+  },
+  topCenterBadgeText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  unlockFloatingWrapper: {
+    position: 'absolute',
+    top: 24,
+    left: 24,
+    zIndex: 40,
+  },
+  unlockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(229, 9, 20, 0.94)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  unlockText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  controlsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(0, 0, 0, 0.34)',
+    zIndex: 12,
+  },
+  topBar: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 12,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+  },
+  topLeftGroup: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  topRightGroup: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  titleBlock: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  videoTitle: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  videoSubtitle: {
+    color: '#CCC',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  iconCircleBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pillBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  pillBtnText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  centerControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 44,
+  },
+  seekCircleBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+  },
+  seekSubLabel: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: -2,
+  },
+  playPauseMainBtn: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(229, 9, 20, 0.94)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomBar: {
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+    paddingTop: 10,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    gap: 10,
+  },
+  progressSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  timeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
+    minWidth: 46,
+    textAlign: 'center',
+  },
+  progressTrackHitArea: {
+    flex: 1,
+    height: 24,
+    justifyContent: 'center',
+  },
+  progressTrackBg: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    overflow: 'hidden',
+  },
+  progressBuffered: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+  },
+  progressFill: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: '#E50914',
+  },
+  progressThumb: {
+    position: 'absolute',
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    backgroundColor: '#E50914',
+    marginLeft: -7,
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  liveIndicatorRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#E50914',
+  },
+  liveLabel: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  bottomActionsRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  bottomRightTools: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  popoverCard: {
+    position: 'absolute',
+    bottom: 76,
+    left: 24,
+    width: 220,
+    backgroundColor: 'rgba(18, 20, 28, 0.97)',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    zIndex: 45,
+  },
+  popoverHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  popoverTitle: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  qualityRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  qualityRowActive: {
+    backgroundColor: 'rgba(229, 9, 20, 0.18)',
+  },
+  qualityText: {
+    color: '#DDD',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  qualityTextActive: {
+    color: '#FFF',
+    fontWeight: '800',
+  },
+  drawerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+    flexDirection: 'row',
+    zIndex: 50,
+  },
+  drawerPanel: {
+    width: 300,
+    maxWidth: '82%',
+    height: '100%',
+    backgroundColor: 'rgba(14, 16, 22, 0.98)',
+    padding: 16,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.12)',
+  },
+  drawerHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  drawerTitle: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  searchBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 40,
+    marginBottom: 12,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#FFF',
+    fontSize: 13,
+    textAlign: 'right',
+  },
+  channelItem: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  channelItemActive: {
+    backgroundColor: 'rgba(229, 9, 20, 0.22)',
+  },
+  channelName: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  channelGroup: {
+    color: '#999',
+    fontSize: 11,
+    textAlign: 'right',
+    marginTop: 2,
+  },
 });
 
 export default EnjoyPlayer;
