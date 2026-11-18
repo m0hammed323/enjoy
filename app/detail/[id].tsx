@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet, View, Text, Image, Pressable, FlatList, Dimensions } from 'react-native';
+import { ScrollView, StyleSheet, View, Text, Image, Pressable, FlatList } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -9,9 +8,8 @@ import { useWatchlist } from '@/hooks/useWatchlist';
 import { useI18n } from '@/hooks/useI18n';
 import { Colors, FontSize, Spacing, Radius } from '@/constants/theme';
 import { Episode } from '@/types';
-import { EnjoyPlayer } from '@/components/EnjoyPlayer';
+import { openInEnjoyPlayer } from '@/utils/enjoyPlayerLauncher';
 
-const { width } = Dimensions.get('window');
 
 export default function DetailScreen() {
   const router = useRouter();
@@ -19,8 +17,6 @@ export default function DetailScreen() {
   const title = id ? getTitleById(id) : undefined;
   const { isInWatchlist, toggleWatchlist } = useWatchlist();
   const { t } = useI18n();
-  const [playing, setPlaying] = useState(false);
-  const [playingEpisode, setPlayingEpisode] = useState<Episode | null>(null);
 
   if (!title) {
     return (
@@ -31,11 +27,9 @@ export default function DetailScreen() {
   }
 
   const inList = isInWatchlist(title.id);
-  const currentEmbedUrl = playingEpisode?.embedUrl || title.embedUrl;
-  const currentTitle = playingEpisode ? `${title.title} - ${playingEpisode.title}` : title.title;
 
   const renderEpisode = ({ item }: { item: Episode }) => (
-    <Pressable style={styles.episodeRow} onPress={() => { setPlayingEpisode(item); setPlaying(true); }}>
+    <Pressable style={styles.episodeRow} onPress={() => { void openInEnjoyPlayer({ url: item.embedUrl, title: `${title.title} - ${item.title}`, subtitle: `S${item.season} · E${item.episode}` }); }}>
       <Image source={{ uri: item.thumbnail }} style={styles.episodeThumb} resizeMode="cover" />
       <View style={styles.episodeInfo}><Text style={styles.episodeNum}>S{item.season} · E{item.episode}</Text><Text style={styles.episodeTitle} numberOfLines={1}>{item.title}</Text><Text style={styles.episodeDesc} numberOfLines={2}>{item.description}</Text>{item.duration > 0 && <Text style={styles.episodeDuration}>{item.duration} min</Text>}</View>
     </Pressable>
@@ -46,8 +40,8 @@ export default function DetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
         <View style={styles.heroSection}><Image source={{ uri: title.backdrop }} style={styles.backdrop} resizeMode="cover" /><LinearGradient colors={['rgba(10,10,15,0.4)', 'transparent', 'rgba(10,10,15,0.6)', Colors.background]} locations={[0, 0.2, 0.6, 1]} style={styles.gradient} /><Pressable style={styles.backButton} onPress={() => router.back()}><ChevronLeft size={26} color={Colors.textPrimary} /></Pressable><View style={styles.heroContent}><View style={styles.typeRow}><View style={styles.typeBadge}>{title.type === 'movie' ? <Film size={12} color={Colors.textPrimary} /> : <Tv size={12} color={Colors.textPrimary} />}<Text style={styles.typeText}>{title.type === 'movie' ? t('movies') : t('series')}</Text></View><View style={styles.qualityBadge}><Text style={styles.qualityText}>{title.quality}</Text></View></View><Text style={styles.title}>{title.title}</Text></View></View>
         <View style={styles.body}>
-          <View style={styles.actionsRow}><Pressable style={styles.playButton} onPress={() => { setPlayingEpisode(null); setPlaying(true); }}><Play size={20} color={Colors.background} fill={Colors.background} /><Text style={styles.playText}>{t('play')}</Text></Pressable><Pressable style={[styles.iconBtn, inList && styles.iconBtnActive]} onPress={() => toggleWatchlist(title.id)}>{inList ? <Check size={20} color={Colors.success} /> : <Plus size={20} color={Colors.textPrimary} />}</Pressable><Pressable style={styles.iconBtn}><Share2 size={18} color={Colors.textPrimary} /></Pressable></View>
-          {playing && <View style={styles.playerBanner}><Text style={styles.playerText}>▶ {t('nowPlaying')}: {currentTitle}</Text></View>}
+          <View style={styles.actionsRow}><Pressable style={styles.playButton} onPress={() => { void openInEnjoyPlayer({ url: title.embedUrl, title: title.title, subtitle: title.type === 'series' ? 'مسلسل' : 'فيلم' }); }}><Play size={20} color={Colors.background} fill={Colors.background} /><Text style={styles.playText}>{t('play')}</Text></Pressable><Pressable style={[styles.iconBtn, inList && styles.iconBtnActive]} onPress={() => toggleWatchlist(title.id)}>{inList ? <Check size={20} color={Colors.success} /> : <Plus size={20} color={Colors.textPrimary} />}</Pressable><Pressable style={styles.iconBtn}><Share2 size={18} color={Colors.textPrimary} /></Pressable></View>
+
           <View style={styles.metaGrid}><MetaItem icon={<Star size={14} color={Colors.star} fill={Colors.star} />} value={title.rating.toFixed(1)} label={t('rating')} />{title.duration > 0 && <MetaItem icon={<Clock size={14} color={Colors.textSecondary} />} value={`${Math.floor(title.duration / 60)}h ${title.duration % 60}m`} label={t('length')} />}<MetaItem icon={<Calendar size={14} color={Colors.textSecondary} />} value={String(title.year)} label={t('year')} />{title.language ? <MetaItem icon={<Globe size={14} color={Colors.textSecondary} />} value={title.language} label={t('language')} /> : null}</View>
           {title.genres.length > 0 && <View style={styles.genreRow}>{title.genres.map((g) => <View key={g} style={styles.genreTag}><Text style={styles.genreTagText}>{g}</Text></View>)}</View>}
           <Text style={styles.sectionLabel}>{t('overview')}</Text><Text style={styles.description}>{title.description}</Text>
@@ -55,7 +49,7 @@ export default function DetailScreen() {
           {title.episodes && title.episodes.length > 0 && <View style={styles.episodesSection}><Text style={styles.sectionLabel}>{t('episodes')}</Text><FlatList data={title.episodes} keyExtractor={(e) => e.id} renderItem={renderEpisode} scrollEnabled={false} ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />} /></View>}
         </View><View style={{ height: Spacing.xxl }} />
       </ScrollView>
-      {playing && currentEmbedUrl && <EnjoyPlayer title={currentTitle} subtitle={playingEpisode ? `S${playingEpisode.season} · E${playingEpisode.episode}` : title.type === 'series' ? 'مسلسل' : 'فيلم'} url={currentEmbedUrl} qualities={[]} channels={[]} forceLandscape={true} onClose={() => { setPlaying(false); setPlayingEpisode(null); }} />}
+
     </SafeAreaView>
   );
 }
