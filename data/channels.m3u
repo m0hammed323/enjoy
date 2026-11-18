@@ -1,53 +1,79 @@
 #EXTM3U
-#EXTINF:-1 tvg-logo="https://i.imgur.com/m1JzonL.png" group-title="أخبار", الجزيرة
+#EXTINF:-1 tvg-logo="https://i.imgur.com/m1JzonL.png" group-title="أخبار", الجزيرة HD
 https://live-hls-web-aje.getaj.net/AJE/01.m3u8
-#EXTINF:-1 tvg-logo="https://i.imgur.com/8DfY3xX.png" group-title="أخبار", العربية
+#EXTINF:-1 tvg-logo="https://i.imgur.com/m1JzonL.png" group-title="أخبار", الجزيرة SD
+https://live-hls-web-aje.getaj.net/AJE/02.m3u8
+#EXTINF:-1 tvg-logo="https://i.imgur.com/8DfY3xX.png" group-title="أخبار", العربية HD
 https://live.alarabiya.net/alarabiapublish/alarabiya.smil/playlist.m3u8
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="رياضة", beIN Sports 1
-https://bein-sports-1.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/SK7GV2l.png" group-title="رياضة", beIN Sports 2
-https://bein-sports-2.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/yW7Bl2L.png" group-title="ترفيه", MBC 1
-https://mbc-1.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", MBC 2
-https://mbc-2.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", MBC 3
-https://mbc-3.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", MBC 4
-https://mbc-4.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", MBC Action
-https://mbc-action.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", MBC Bollywood
-https://mbc-bollywood.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أفلام", MBC 2 Movies
-https://mbc2-movies.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أفلام", MBC Max
-https://mbc-max.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أطفال", Cartoon Network
-https://cartoon-network.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أطفال", Spacetoon
-https://spacetoon.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/8DfY3xX.png" group-title="أخبار", العربية SD
+https://live.alarabiya.net/alarabiapublish/alarabiya.smil/playlist_sd.m3u8
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="رياضة", beIN Sports 1 HD
+https://bein-sports-1-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="رياضة", beIN Sports 1 SD
+https://bein-sports-1-sd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/SK7GV2l.png" group-title="رياضة", beIN Sports 2 HD
+https://bein-sports-2-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/SK7GV2l.png" group-title="رياضة", beIN Sports 2 SD
+https://bein-sports-2-sd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="رياضة", beIN Sports 3 HD
+https://bein-sports-3-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="رياضة", beIN Sports 3 FHD
+https://bein-sports-3-fhd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/yW7Bl2L.png" group-title="ترفيه", MBC 1 HD
+https://mbc-1-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/yW7Bl2L.png" group-title="ترفيه", MBC 1 SD
+https://mbc-1-sd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", MBC 2 HD
+https://mbc-2-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", MBC 2 SD
+https://mbc-2-sd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", MBC 3 HD
+https://mbc-3-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", MBC 4 HD
+https://mbc-4-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", MBC Action HD
+https://mbc-action-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", MBC Bollywood HD
+https://mbc-bollywood-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أفلام", MBC 2 Movies HD
+https://mbc2-movies-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أفلام", MBC 2 Movies SD
+https://mbc2-movies-sd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أفلام", MBC Max HD
+https://mbc-max-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أفلام", MBC Max SD
+https://mbc-max-sd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أطفال", Cartoon Network HD
+https://cartoon-network-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أطفال", Spacetoon HD
+https://spacetoon-hd.live.stream
 #EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="دين", Quran TV
 https://quran-tv.live.stream
 #EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="دين", Al Majd
 https://al-majd.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", Rotana
-https://rotana.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", Rotana Cinema
-https://rotana-cinema.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", Rotana Khalijia
-https://rotana-khalijia.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أخبار", Sky News Arabia
-https://sky-news-arabia.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", Rotana HD
+https://rotana-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", Rotana Cinema HD
+https://rotana-cinema-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", Rotana Khalijia HD
+https://rotana-khalijia-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أخبار", Sky News Arabia HD
+https://sky-news-arabia-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أخبار", Sky News Arabia SD
+https://sky-news-arabia-sd.live.stream
 #EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="أخبار", DW Arabia
 https://dw-arabia.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", LBC
-https://lbc.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", LBC HD
+https://lbc-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", LBC SD
+https://lbc-sd.live.stream
 #EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", Future TV
 https://future-tv.live.stream
 #EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="ترفيه", Al Nahar
 https://al-nahar.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="رياضة", Abu Dhabi Sports
-https://abu-dhabi-sports.live.stream
-#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="رياضة", Dubai Sports
-https://dubai-sports.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="رياضة", Abu Dhabi Sports HD
+https://abu-dhabi-sports-hd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="رياضة", Abu Dhabi Sports SD
+https://abu-dhabi-sports-sd.live.stream
+#EXTINF:-1 tvg-logo="https://i.imgur.com/eITVPtP.png" group-title="رياضة", Dubai Sports HD
+https://dubai-sports-hd.live.stream

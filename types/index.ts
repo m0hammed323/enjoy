@@ -42,12 +42,18 @@ export interface WatchlistItem {
   addedAt: number;
 }
 
+export interface ChannelQuality {
+  label: string;
+  url: string;
+}
+
 export interface Channel {
   id: string;
   name: string;
   logo: string;
   group: string;
   streamUrl: string;
+  qualities: ChannelQuality[];
 }
 
 export interface RemoteConfig {

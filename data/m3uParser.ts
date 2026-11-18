@@ -1,4 +1,4 @@
-import { Title, Episode, ContentType, Channel } from '@/types';
+import { Title, Episode, ContentType, Channel, ChannelQuality } from '@/types';
 
 interface ParsedEntry {
   name: string;
@@ -7,9 +7,26 @@ interface ParsedEntry {
   embedUrl: string;
 }
 
+function normalizeChannelName(name: string): string {
+  return name
+    .replace(/\s*(?:HD|FHD|SD|4K|1080p|720p|480p|LOW|HIGH)\s*/gi, '')
+    .replace(/\s*-\s*(?:HD|FHD|SD|4K|1080p|720p|480p)\s*/gi, '')
+    .trim();
+}
+
+function detectQualityLabel(name: string): string {
+  const upper = name.toUpperCase();
+  if (upper.includes('4K')) return '4K';
+  if (upper.includes('1080') || upper.includes('FHD')) return 'FHD';
+  if (upper.includes('720')) return '720p';
+  if (upper.includes('480') || upper.includes('SD')) return 'SD';
+  if (upper.includes('HD')) return 'HD';
+  return 'AUTO';
+}
+
 export function parseM3UChannels(content: string): Channel[] {
   const lines = content.split('\n');
-  const channels: Channel[] = [];
+  const rawEntries: { name: string; logo: string; group: string; url: string }[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -22,17 +39,39 @@ export function parseM3UChannels(content: string): Channel[] {
       const urlMatch = nextLine.match(/(https?:\/\/[^\s<>"]+)/i);
 
       if (nameMatch && urlMatch) {
-        channels.push({
-          id: `ch-${channels.length}-${nameMatch[1].trim().replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 20)}`,
+        rawEntries.push({
           name: nameMatch[1].trim(),
           logo: logoMatch ? logoMatch[1].trim() : '',
           group: groupMatch ? groupMatch[1].trim() : 'Other',
-          streamUrl: urlMatch[1].trim(),
+          url: urlMatch[1].trim(),
         });
       }
     }
   }
-  return channels;
+
+  const grouped: Record<string, Channel> = {};
+
+  rawEntries.forEach((entry, index) => {
+    const baseName = normalizeChannelName(entry.name);
+    const qualityLabel = detectQualityLabel(entry.name);
+    const key = `${baseName}-${entry.group}`.toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+    if (grouped[key]) {
+      grouped[key].qualities.push({ label: qualityLabel, url: entry.url });
+    } else {
+      const qualities: ChannelQuality[] = [{ label: qualityLabel, url: entry.url }];
+      grouped[key] = {
+        id: `ch-${index}-${baseName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 20)}`,
+        name: baseName,
+        logo: entry.logo,
+        group: entry.group,
+        streamUrl: entry.url,
+        qualities,
+      };
+    }
+  });
+
+  return Object.values(grouped);
 }
 
 export function parseM3U(content: string): ParsedEntry[] {
