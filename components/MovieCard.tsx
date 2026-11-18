@@ -4,7 +4,7 @@ import { Title } from '@/types';
 import { Colors, Radius, FontSize, Spacing } from '@/constants/theme';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { useI18n } from '@/hooks/useI18n';
-import { openExternalVideo } from '@/utils/externalPlayer';
+import { useRouter } from 'expo-router';
 
 const CARD_WIDTH = 140;
 const CARD_HEIGHT = 200;
@@ -14,9 +14,10 @@ interface MovieCardProps { title: Title; width?: number; height?: number; }
 export function MovieCard({ title, width = CARD_WIDTH, height = CARD_HEIGHT }: MovieCardProps) {
   const { isInWatchlist, toggleWatchlist } = useWatchlist();
   const { t } = useI18n();
+  const router = useRouter();
   const inList = isInWatchlist(title.id);
   return (
-    <Pressable style={[styles.card, { width, height }]} onPress={() => void openExternalVideo(title.embedUrl)}>
+    <Pressable style={[styles.card, { width, height }]} onPress={() => router.push(`/detail/${title.id}`)}>
       <Image source={{ uri: title.poster }} style={styles.poster} resizeMode="cover" />
       <View style={styles.overlay} />
       <View style={styles.topRow}><View style={styles.ratingChip}><Star size={10} color={Colors.star} fill={Colors.star} /><Text style={styles.ratingText}>{title.rating.toFixed(1)}</Text></View>{title.isNew && <View style={styles.newChip}><Text style={styles.newText}>NEW</Text></View>}</View>

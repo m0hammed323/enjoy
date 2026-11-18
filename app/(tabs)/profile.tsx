@@ -1,11 +1,10 @@
 import { StyleSheet, View, Text, ScrollView, Pressable, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, FontSize, Spacing, Radius } from '@/constants/theme';
-import { Settings, Bell, Download, Shield, CircleHelp, LogOut, ChevronRight, Star, Crown, Languages } from 'lucide-react-native';
+import { Settings, Bell, Download, Shield, CircleHelp, LogOut, ChevronRight, Star, Crown, Languages, Play } from 'lucide-react-native';
 import { useState } from 'react';
 import { useI18n } from '@/hooks/useI18n';
 import { useConfig } from '@/hooks/useConfig';
-import { ExternalPlayerMode, getExternalPlayerMode, setExternalPlayerMode } from '@/utils/externalPlayer';
 
 export default function ProfileScreen() {
   const { t, lang, setLanguage } = useI18n();
@@ -13,11 +12,6 @@ export default function ProfileScreen() {
   const [notifications, setNotifications] = useState(true);
   const [autoplay, setAutoplay] = useState(false);
   const [hdStreaming, setHdStreaming] = useState(true);
-  const [playerMode, setPlayerMode] = useState<ExternalPlayerMode>(getExternalPlayerMode);
-  const choosePlayerMode = (mode: ExternalPlayerMode) => {
-    setExternalPlayerMode(mode);
-    setPlayerMode(mode);
-  };
   const ar = lang === 'ar';
 
   return (
@@ -44,13 +38,10 @@ export default function ProfileScreen() {
           <Divider />
           <ToggleRow icon={<Download size={20} color={Colors.textSecondary} />} label={t('hdStreaming')} value={hdStreaming} onValueChange={setHdStreaming} />
           <Divider />
-          <Pressable style={[styles.row, playerMode === 'chooser' && styles.rowSelected]} onPress={() => choosePlayerMode('chooser')}>
-            <View style={styles.rowLeft}><Settings size={20} color={Colors.textSecondary} /><View><Text style={styles.rowLabel}>{ar ? 'اختر مشغلاً عند التشغيل' : 'Ask which player to use'}</Text><Text style={styles.rowHint}>{ar ? 'اعرض التطبيقات المتاحة لكل فيديو' : 'Show available apps for each video'}</Text></View></View>{playerMode === 'chooser' && <View style={styles.selectedDot} />}
-          </Pressable>
-          <Divider />
-          <Pressable style={[styles.row, playerMode === 'default' && styles.rowSelected]} onPress={() => choosePlayerMode('default')}>
-            <View style={styles.rowLeft}><Settings size={20} color={Colors.textSecondary} /><View><Text style={styles.rowLabel}>{ar ? 'استخدم المشغل الافتراضي للجهاز' : 'Use the device default player'}</Text><Text style={styles.rowHint}>{ar ? 'يفتح التطبيق الافتراضي الذي يحدده النظام' : 'Open the app selected as default by the system'}</Text></View></View>{playerMode === 'default' && <View style={styles.selectedDot} />}
-          </Pressable>
+          <View style={styles.row}>
+            <View style={styles.rowLeft}><Play size={20} color={Colors.primary} fill={Colors.primary} /><View><Text style={styles.rowLabel}>{ar ? 'مشغل Enjoy Player' : 'Enjoy Player'}</Text><Text style={styles.rowHint}>{ar ? 'يتم التشغيل تلقائياً في مشغل Enjoy Player الخارجي' : 'Videos open in Enjoy Player automatically'}</Text></View></View>
+            <View style={styles.selectedDot} />
+          </View>
         </View>
         <Text style={styles.sectionLabel}>{t('account')}</Text>
         <View style={styles.section}>
