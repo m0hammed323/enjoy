@@ -55,8 +55,24 @@ export default function DetailScreen() {
   const fav = isFavorite(title.id);
 
   const handlePlay = () => {
-    addToHistory({ titleId: title.id, label: title.title, url: title.embedUrl });
-    void openInEnjoyPlayer({ url: title.embedUrl, title: title.title, subtitle: title.type === 'series' ? 'مسلسل' : 'فيلم' });
+    const sub = title.type === 'series' ? 'مسلسل' : 'فيلم';
+    const posterUri = title.poster || title.backdrop;
+    addToHistory({
+      titleId: title.id,
+      label: title.title,
+      subtitle: sub,
+      poster: posterUri,
+      mediaType: title.type,
+      url: title.embedUrl,
+    });
+    void openInEnjoyPlayer({
+      url: title.embedUrl,
+      title: title.title,
+      subtitle: sub,
+      titleId: title.id,
+      poster: posterUri,
+      mediaType: title.type,
+    });
   };
 
   const handleShare = () => {
@@ -89,11 +105,26 @@ export default function DetailScreen() {
   };
 
   const handleEpisodePlay = (ep: Episode) => {
-    addToHistory({ titleId: title.id, episodeId: ep.id, label: `${title.title} - ${ep.title}`, url: ep.embedUrl });
+    const epLabel = `${title.title} - ${ep.title}`;
+    const epSub = `${t('season')} ${ep.season} · E${ep.episode}`;
+    const posterUri = ep.thumbnail || title.poster || title.backdrop;
+    addToHistory({
+      titleId: title.id,
+      episodeId: ep.id,
+      label: epLabel,
+      subtitle: epSub,
+      poster: posterUri,
+      mediaType: 'series',
+      url: ep.embedUrl,
+    });
     void openInEnjoyPlayer({
       url: ep.embedUrl,
-      title: `${title.title} - ${ep.title}`,
-      subtitle: `${t('season')} ${ep.season} · E${ep.episode}`,
+      title: epLabel,
+      subtitle: epSub,
+      titleId: title.id,
+      episodeId: ep.id,
+      poster: posterUri,
+      mediaType: 'series',
     });
   };
 
