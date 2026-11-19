@@ -1,15 +1,14 @@
 import { useMemo, useState, useRef } from 'react';
-import { ScrollView, StyleSheet, View, Text, Image, Pressable, FlatList, Alert, Platform } from 'react-native';
+import { ScrollView, StyleSheet, View, Text, Image, Pressable, Alert, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Play, Plus, Check, Share2, Star, Clock, Calendar, Globe, Film, Tv, ChevronLeft, ChevronDown, ChevronUp, Heart, Copy, Eye } from 'lucide-react-native';
+import { Play, Plus, Check, Share2, Star, Clock, Calendar, Globe, Film, Tv, ChevronLeft, ChevronDown, ChevronUp, Heart, Eye } from 'lucide-react-native';
 import { getTitleById } from '@/data/titles';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { useI18n } from '@/hooks/useI18n';
 import { useWatchHistory } from '@/hooks/useWatchHistory';
 import { useFavorites } from '@/hooks/useFavorites';
-import { useCopyLink } from '@/hooks/useCopyLink';
 import { Colors, FontSize, Spacing, Radius } from '@/constants/theme';
 import { Episode } from '@/types';
 import { openInEnjoyPlayer } from '@/utils/enjoyPlayerLauncher';
@@ -22,9 +21,9 @@ export default function DetailScreen() {
   const { isFavorite, toggleFavorite } = useFavorites();
   const { addToHistory, isWatched } = useWatchHistory();
   const { t } = useI18n();
-  const { copiedId, copyLink } = useCopyLink();
   const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set([1]));
   const scrollRef = useRef<ScrollView>(null);
+  const bodyY = useRef(0);
   const episodeSectionY = useRef(0);
 
   const seasons = useMemo(() => {
@@ -78,14 +77,15 @@ export default function DetailScreen() {
   };
 
   const scrollToEpisodes = () => {
-    if (scrollRef.current && episodeSectionY.current > 0) {
-      scrollRef.current.scrollTo({ y: episodeSectionY.current - 20, animated: true });
+    const targetY = bodyY.current + episodeSectionY.current;
+    if (scrollRef.current && targetY > 0) {
+      scrollRef.current.scrollTo({ y: Math.max(0, targetY - 16), animated: true });
     }
   };
 
   const handleSeasonPress = (season: number) => {
     setExpandedSeasons(new Set([season]));
-    setTimeout(scrollToEpisodes, 100);
+    setTimeout(scrollToEpisodes, 120);
   };
 
   const handleEpisodePlay = (ep: Episode) => {
@@ -98,8 +98,6 @@ export default function DetailScreen() {
   };
 
   const renderEpisode = (item: Episode) => {
-    const copyItemId = `ep-${item.id}`;
-    const isCopied = copiedId === copyItemId;
     const watched = isWatched(title.id, item.id);
     return (
       <View key={item.id} style={styles.episodeRow}>
@@ -113,11 +111,11 @@ export default function DetailScreen() {
               </View>
             )}
             {watched && (
-              <View style={styles.epWatchedBadge}>
+              <View pointerEvents="none" style={styles.epWatchedBadge}>
                 <Eye size={8} color={Colors.textPrimary} />
               </View>
             )}
-            <View style={styles.epPlayOverlay}>
+            <View pointerEvents="none" style={styles.epPlayOverlay}>
               <Play size={14} color={Colors.textPrimary} fill={Colors.textPrimary} />
             </View>
           </View>
@@ -128,14 +126,11 @@ export default function DetailScreen() {
             {item.duration > 0 && <Text style={styles.episodeDuration}>{item.duration} min</Text>}
           </View>
         </Pressable>
-        <Pressable style={styles.epCopyBtn} onPress={() => copyLink(item.embedUrl, copyItemId)}>
-          {isCopied ? <Check size={16} color={Colors.success} /> : <Copy size={16} color={Colors.textMuted} />}
-        </Pressable>
       </View>
     );
   };
 
-  const renderSeason = ({ item }: { item: { season: number; episodes: Episode[] } }) => {
+  const renderSeason = (item: { season: number; episodes: Episode[] }) => {
     const expanded = expandedSeasons.has(item.season);
     return (
       <View key={item.season} style={styles.seasonContainer}>
@@ -158,7 +153,14 @@ export default function DetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} bounces={false}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.heroSection}>
           {title.backdrop ? (
             <Image source={{ uri: title.backdrop }} style={styles.backdrop} resizeMode="cover" />
@@ -168,6 +170,7 @@ export default function DetailScreen() {
             </View>
           )}
           <LinearGradient
+            pointerEvents="none"
             colors={['rgba(11,15,25,0.4)', 'transparent', 'rgba(11,15,25,0.6)', Colors.background]}
             locations={[0, 0.2, 0.6, 1]}
             style={styles.gradient}
@@ -175,7 +178,7 @@ export default function DetailScreen() {
           <Pressable style={styles.backButton} onPress={() => router.back()}>
             <ChevronLeft size={26} color={Colors.textPrimary} />
           </Pressable>
-          <View style={styles.heroContent}>
+          <View pointerEvents="none" style={styles.heroContent}>
             <View style={styles.typeRow}>
               <View style={styles.typeBadge}>
                 {title.type === 'movie' ? <Film size={12} color={Colors.textPrimary} /> : <Tv size={12} color={Colors.textPrimary} />}
@@ -187,7 +190,7 @@ export default function DetailScreen() {
           </View>
         </View>
 
-        <View style={styles.body}>
+        <View onLayout={(e) => { bodyY.current = e.nativeEvent.layout.y; }} style={styles.body}>
           <View style={styles.actionsRow}>
             <Pressable style={styles.playButton} onPress={handlePlay}>
               <Play size={20} color={Colors.background} fill={Colors.background} />
@@ -246,16 +249,10 @@ export default function DetailScreen() {
                   </Pressable>
                 ))}
               </View>
-              <FlatList
-                data={seasons}
-                keyExtractor={(item) => `season-${item.season}`}
-                renderItem={renderSeason}
-                scrollEnabled={false}
-              />
+              {seasons.map((seasonItem) => renderSeason(seasonItem))}
             </View>
           )}
         </View>
-        <View style={{ height: Spacing.xxl }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -282,6 +279,8 @@ function InfoLine({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  scrollView: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingBottom: 120 },
   heroSection: { height: 420, position: 'relative' },
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, height: 420 },
   backdropFallback: { backgroundColor: Colors.surfaceLight, alignItems: 'center', justifyContent: 'center' },
@@ -374,7 +373,6 @@ const styles = StyleSheet.create({
   episodeTitle: { color: Colors.textPrimary, fontSize: FontSize.sm, fontWeight: '700', marginBottom: 2 },
   episodeDesc: { color: Colors.textSecondary, fontSize: FontSize.xs, lineHeight: 16, marginBottom: 4 },
   episodeDuration: { color: Colors.textMuted, fontSize: FontSize.xs },
-  epCopyBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   errorContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   errorText: { color: Colors.textPrimary, fontSize: FontSize.lg, marginBottom: Spacing.lg },
   backBtn: { backgroundColor: Colors.primary, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderRadius: Radius.md },
