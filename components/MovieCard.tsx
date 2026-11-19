@@ -38,18 +38,20 @@ export function MovieCard({ title, width = CARD_WIDTH, height = CARD_HEIGHT }: M
         </View>
       )}
       <View style={styles.overlay} />
-      {watched && (
-        <View style={styles.watchedBadge}>
-          <Eye size={9} color={Colors.textPrimary} />
-          <Text style={styles.watchedText}>{t('watchedBadge')}</Text>
-        </View>
-      )}
       <View style={styles.topRow}>
-        <View style={styles.ratingChip}>
-          <Star size={10} color={Colors.star} fill={Colors.star} />
-          <Text style={styles.ratingText}>{title.rating.toFixed(1)}</Text>
+        <View style={styles.ratingColumn}>
+          <View style={styles.ratingChip}>
+            <Star size={10} color={Colors.star} fill={Colors.star} />
+            <Text style={styles.ratingText}>{title.rating.toFixed(1)}</Text>
+          </View>
+          {watched && (
+            <View style={styles.watchedBadge}>
+              <Eye size={9} color={Colors.textPrimary} />
+              <Text style={styles.watchedText}>{t('watchedBadge')}</Text>
+            </View>
+          )}
         </View>
-        {title.isNew && !watched && (
+        {title.isNew && (
           <View style={styles.newChip}>
             <Text style={styles.newText}>NEW</Text>
           </View>
@@ -74,7 +76,12 @@ const styles = StyleSheet.create({
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11,15,25,0.12)' },
   topRow: {
     position: 'absolute', top: Spacing.xs, left: Spacing.xs, right: Spacing.xs,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+  },
+  ratingColumn: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
   },
   ratingChip: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
@@ -84,9 +91,8 @@ const styles = StyleSheet.create({
   newChip: { backgroundColor: Colors.primary, paddingHorizontal: 6, paddingVertical: 3, borderRadius: Radius.sm },
   newText: { color: Colors.textPrimary, fontSize: 9, fontWeight: '800' },
   watchedBadge: {
-    position: 'absolute', top: Spacing.xs, right: Spacing.xs,
     flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: 'rgba(34,197,94,0.9)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: Radius.sm,
+    backgroundColor: 'rgba(34,197,94,0.92)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: Radius.sm,
   },
   watchedText: { color: Colors.textPrimary, fontSize: 8, fontWeight: '800' },
   bottomInfo: {
