@@ -1,46 +1,13 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
-import { ActivityIndicator, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Dimensions } from 'react-native';
+import { useMemo, useState, useCallback } from 'react';
+import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Tv, Play, Search, Layers, Copy, Check, Heart } from 'lucide-react-native';
+import { Tv, Play, Search, Layers, Heart } from 'lucide-react-native';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { useConfig } from '@/hooks/useConfig';
 import { useI18n } from '@/hooks/useI18n';
 import { useFavorites } from '@/hooks/useFavorites';
 import { Channel, ChannelQuality } from '@/types';
 import { openInEnjoyPlayer } from '@/utils/enjoyPlayerLauncher';
-import { useCopyLink } from '@/hooks/useCopyLink';
-import { DrawerTriggerButton } from '@/components/SideDrawer';
-
-const { width: screenWidth } = Dimensions.get('window');
-const NUM_COLUMNS = screenWidth < 480 ? 3 : screenWidth < 768 ? 4 : 6;
-const CARD_GAP = Spacing.sm;
-const CARD_WIDTH = Math.floor((screenWidth - Spacing.lg * 2 - CARD_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS);
-const CARD_HEIGHT = Math.floor(CARD_WIDTH * 1.15);
-
-const AVATAR_PALETTE = [
-  { bg: 'rgba(229, 9, 20, 0.18)', border: 'rgba(229, 9, 20, 0.45)', text: '#FF4D5A' },
-  { bg: 'rgba(59, 130, 246, 0.18)', border: 'rgba(59, 130, 246, 0.45)', text: '#60A5FA' },
-  { bg: 'rgba(16, 185, 129, 0.18)', border: 'rgba(16, 185, 129, 0.45)', text: '#34D399' },
-  { bg: 'rgba(168, 85, 247, 0.18)', border: 'rgba(168, 85, 247, 0.45)', text: '#C084FC' },
-  { bg: 'rgba(245, 158, 11, 0.18)', border: 'rgba(245, 158, 11, 0.45)', text: '#FBBF24' },
-  { bg: 'rgba(6, 182, 212, 0.18)', border: 'rgba(6, 182, 212, 0.45)', text: '#22D3EE' },
-];
-
-function getChannelMonogram(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return `${words[0][0]}${words[1][0]}`.toUpperCase();
-  }
-  return name.trim().slice(0, 2).toUpperCase() || 'TV';
-}
-
-function getAvatarTheme(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
-}
 
 function getQualityDescription(label: string): string {
   const base = label.split(' ')[0];
@@ -56,61 +23,13 @@ function getQualityDescription(label: string): string {
   }
 }
 
-function ChannelLogo({ logo, name, size = 'card' }: { logo?: string; name: string; size?: 'card' | 'sheet' }) {
-  const [imgError, setImgError] = useState(false);
-
-  useEffect(() => {
-    setImgError(false);
-  }, [logo]);
-
-  const isValidUri = Boolean(logo && /^https?:\/\//i.test(logo.trim()));
-  const avatarTheme = useMemo(() => getAvatarTheme(name), [name]);
-  const monogram = useMemo(() => getChannelMonogram(name), [name]);
-
-  if (isValidUri && !imgError) {
-    return (
-      <View style={size === 'card' ? styles.logoInnerPlate : styles.sheetLogoInnerPlate}>
-        <Image
-          source={{ uri: logo!.trim() }}
-          style={styles.cardLogo}
-          resizeMode="contain"
-          onError={() => setImgError(true)}
-        />
-      </View>
-    );
-  }
-
-  return (
-    <View
-      style={[
-        styles.monogramBox,
-        { backgroundColor: avatarTheme.bg, borderColor: avatarTheme.border },
-      ]}
-    >
-      <Text
-        style={[
-          size === 'card' ? styles.monogramText : styles.sheetMonogramText,
-          { color: avatarTheme.text },
-        ]}
-        numberOfLines={1}
-      >
-        {monogram}
-      </Text>
-      <View style={styles.monogramTvTag}>
-        <Tv size={size === 'card' ? 10 : 12} color={avatarTheme.text} />
-      </View>
-    </View>
-  );
-}
-
 export default function ChannelsScreen() {
   const { channels, status } = useConfig();
-  const { t } = useI18n();
+  const { t, isRTL } = useI18n();
   const { isChannelFavorite, toggleChannelFavorite } = useFavorites();
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [qualityModalChannel, setQualityModalChannel] = useState<Channel | null>(null);
-  const { copiedId, copyLink } = useCopyLink();
 
   const groups = useMemo(
     () => Array.from(new Set(channels.map((c) => c.group).filter(Boolean))),
@@ -160,66 +79,81 @@ export default function ChannelsScreen() {
     );
   }
 
-  const renderChannelCard = ({ item }: { item: Channel }) => {
+  const renderChannelRow = ({ item }: { item: Channel }) => {
     const hasMultiQuality = item.qualities.length > 1;
-    const primaryQuality = item.qualities[0]?.label;
+    const singleQuality = !hasMultiQuality ? item.qualities[0]?.label : null;
     const fav = isChannelFavorite(item.id);
 
     return (
       <Pressable
-        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+        style={({ pressed }) => [styles.channelRow, pressed && styles.channelRowPressed]}
         onPress={() => handleChannelPress(item)}
       >
-        <View style={styles.cardLogoContainer}>
-          <ChannelLogo logo={item.logo} name={item.name} size="card" />
+        <View style={styles.channelMainInfo}>
+          <View style={styles.nameRow}>
+            <View style={styles.liveDot} />
+            <Text style={styles.channelName} numberOfLines={1}>
+              {item.name}
+            </Text>
+          </View>
 
+          <View style={styles.metaRow}>
+            <Text style={styles.channelGroup} numberOfLines={1}>
+              {item.group}
+            </Text>
+
+            {hasMultiQuality ? (
+              <View style={styles.qualityTagsInline}>
+                {item.qualities.slice(0, 4).map((q, idx) => (
+                  <Pressable
+                    key={`${q.label}-${idx}`}
+                    style={styles.qualityChip}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handlePlay(item, q);
+                    }}
+                  >
+                    <Text style={styles.qualityChipText}>{q.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : (
+              singleQuality &&
+              singleQuality !== 'AUTO' && (
+                <View style={styles.singleQualityChip}>
+                  <Text style={styles.singleQualityChipText}>{singleQuality}</Text>
+                </View>
+              )
+            )}
+          </View>
+        </View>
+
+        <View style={styles.rowActions}>
           <Pressable
-            style={styles.favHeartBtn}
+            style={styles.favBtn}
             onPress={(e) => {
               e.stopPropagation();
               toggleChannelFavorite(item.id);
             }}
           >
             <Heart
-              size={12}
-              color={fav ? Colors.primary : Colors.textSecondary}
+              size={17}
+              color={fav ? Colors.primary : Colors.textMuted}
               fill={fav ? Colors.primary : 'transparent'}
             />
           </Pressable>
 
           {hasMultiQuality ? (
-            <View style={styles.multiQualityBadge}>
-              <Layers size={9} color={Colors.textPrimary} />
-              <Text style={styles.multiQualityText}>{item.qualities.length}</Text>
+            <View style={styles.multiPlayBadge}>
+              <Layers size={13} color="#FFFFFF" />
+              <Text style={styles.multiPlayText}>{item.qualities.length}</Text>
             </View>
           ) : (
-            primaryQuality && primaryQuality !== 'AUTO' && (
-              <View style={styles.singleQualityBadge}>
-                <Text style={styles.singleQualityText}>{primaryQuality}</Text>
-              </View>
-            )
+            <View style={styles.directPlayCircle}>
+              <Play size={14} color={Colors.primary} fill={Colors.primary} />
+            </View>
           )}
-
-          <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>{t('live')}</Text>
-          </View>
         </View>
-
-        <View style={styles.cardInfo}>
-          <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
-          <Text style={styles.cardGroup} numberOfLines={1}>{item.group}</Text>
-        </View>
-
-        {hasMultiQuality && (
-          <View style={styles.qualityRow}>
-            {item.qualities.slice(0, 3).map((q, idx) => (
-              <View key={`${q.label}-${idx}`} style={styles.qualityTag}>
-                <Text style={styles.qualityTagText}>{q.label}</Text>
-              </View>
-            ))}
-          </View>
-        )}
       </Pressable>
     );
   };
@@ -227,7 +161,7 @@ export default function ChannelsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.stickyHeader}>
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, !isRTL && { paddingLeft: 68 }]}>
           <View style={styles.headerTextCol}>
             <Text style={styles.title}>{t('channels')}</Text>
             <Text style={styles.subtitle}>
@@ -236,7 +170,6 @@ export default function ChannelsScreen() {
                 : `${channels.length} ${t('channels')}`}
             </Text>
           </View>
-          <DrawerTriggerButton />
         </View>
 
         <View style={styles.searchBar}>
@@ -277,12 +210,10 @@ export default function ChannelsScreen() {
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
-          renderItem={renderChannelCard}
-          numColumns={NUM_COLUMNS}
-          columnWrapperStyle={{ gap: CARD_GAP }}
+          renderItem={renderChannelRow}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
+          ItemSeparatorComponent={() => <View style={{ height: Spacing.xs + 2 }} />}
         />
       )}
 
@@ -291,11 +222,6 @@ export default function ChannelsScreen() {
           <Pressable style={styles.qualitySheet} onPress={(e) => e.stopPropagation()}>
             <View style={styles.sheetHandle} />
             <View style={styles.sheetHeader}>
-              <View style={styles.sheetLogoContainer}>
-                {qualityModalChannel && (
-                  <ChannelLogo logo={qualityModalChannel.logo} name={qualityModalChannel.name} size="sheet" />
-                )}
-              </View>
               <View style={styles.sheetTitleContainer}>
                 <Text style={styles.sheetTitle} numberOfLines={1}>{qualityModalChannel?.name}</Text>
                 <Text style={styles.sheetSubtitle} numberOfLines={1}>
@@ -317,27 +243,26 @@ export default function ChannelsScreen() {
             </View>
             <Text style={styles.sheetLabel}>{t('selectStreamQuality')}</Text>
             <ScrollView style={styles.qualityList}>
-              {qualityModalChannel?.qualities.map((q, idx) => {
-                const copyItemId = `quality-${idx}`;
-                const isCopied = copiedId === copyItemId;
-                return (
-                  <View key={`${q.label}-${idx}`} style={styles.qualityOptionRow}>
-                    <Pressable style={styles.qualityOption} onPress={() => qualityModalChannel && handlePlay(qualityModalChannel, q)}>
-                      <View style={styles.qualityOptionLeft}>
-                        <View style={styles.qualityIconCircle}><Layers size={16} color={Colors.primary} /></View>
-                        <View>
-                          <Text style={styles.qualityOptionLabel}>{q.label}</Text>
-                          <Text style={styles.qualityOptionDesc}>{getQualityDescription(q.label)}</Text>
-                        </View>
-                      </View>
-                      <Play size={18} color={Colors.primary} fill={Colors.primary} />
-                    </Pressable>
-                    <Pressable style={styles.copyBtn} onPress={() => copyLink(q.url, copyItemId)}>
-                      {isCopied ? <Check size={16} color={Colors.success} /> : <Copy size={16} color={Colors.textMuted} />}
-                    </Pressable>
+              {qualityModalChannel?.qualities.map((q, idx) => (
+                <Pressable
+                  key={`${q.label}-${idx}`}
+                  style={({ pressed }) => [styles.qualityOption, pressed && { opacity: 0.75 }]}
+                  onPress={() => qualityModalChannel && handlePlay(qualityModalChannel, q)}
+                >
+                  <View style={styles.qualityOptionLeft}>
+                    <View style={styles.qualityIconCircle}>
+                      <Layers size={16} color={Colors.primary} />
+                    </View>
+                    <View>
+                      <Text style={styles.qualityOptionLabel}>{q.label}</Text>
+                      <Text style={styles.qualityOptionDesc}>{getQualityDescription(q.label)}</Text>
+                    </View>
                   </View>
-                );
-              })}
+                  <View style={styles.modalPlayPill}>
+                    <Play size={15} color="#FFFFFF" fill="#FFFFFF" />
+                  </View>
+                </Pressable>
+              ))}
             </ScrollView>
             <Pressable style={styles.sheetCloseBtn} onPress={() => setQualityModalChannel(null)}>
               <Text style={styles.sheetCloseText}>{t('close')}</Text>
@@ -376,70 +301,75 @@ const styles = StyleSheet.create({
   groupPillText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
   groupPillTextActive: { color: Colors.textPrimary, fontWeight: '700' },
   list: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxl },
-  card: {
-    width: CARD_WIDTH, backgroundColor: Colors.surface, borderRadius: Radius.md,
-    padding: Spacing.xs + 2, alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+  channelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.sm + 4,
+    paddingHorizontal: Spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
-  cardPressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
-  cardLogoContainer: {
-    width: '100%', height: CARD_HEIGHT * 0.62, borderRadius: Radius.sm,
-    backgroundColor: Colors.surfaceLight, alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden', position: 'relative',
+  channelRowPressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
+  channelMainInfo: { flex: 1, paddingRight: Spacing.sm },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.error },
+  channelName: { flex: 1, color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '800' },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginTop: 5,
+    paddingLeft: 15,
   },
-  logoInnerPlate: {
-    width: '86%', height: '82%', borderRadius: Radius.sm,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    padding: 6, alignItems: 'center', justifyContent: 'center',
+  channelGroup: { color: Colors.textMuted, fontSize: FontSize.xs, fontWeight: '600' },
+  qualityTagsInline: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  qualityChip: {
+    backgroundColor: 'rgba(229,9,20,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(229,9,20,0.35)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
   },
-  sheetLogoInnerPlate: {
-    width: '100%', height: '100%',
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    padding: 6, alignItems: 'center', justifyContent: 'center',
+  qualityChipText: { color: Colors.primary, fontSize: 10, fontWeight: '800' },
+  singleQualityChip: {
+    backgroundColor: Colors.surfaceLighter,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
   },
-  cardLogo: { width: '100%', height: '100%' },
-  monogramBox: {
-    width: '82%', height: '78%', borderRadius: Radius.sm,
-    borderWidth: 1, alignItems: 'center', justifyContent: 'center',
-    position: 'relative',
-  },
-  monogramText: { fontSize: FontSize.md, fontWeight: '900', letterSpacing: 0.5 },
-  sheetMonogramText: { fontSize: FontSize.lg, fontWeight: '900', letterSpacing: 0.5 },
-  monogramTvTag: { position: 'absolute', bottom: 3, right: 4, opacity: 0.75 },
-  favHeartBtn: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.68)',
+  singleQualityChipText: { color: Colors.textSecondary, fontSize: 10, fontWeight: '700' },
+  rowActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  favBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.surfaceLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  multiQualityBadge: {
-    position: 'absolute', top: 4, right: 4, flexDirection: 'row', alignItems: 'center', gap: 2,
-    backgroundColor: Colors.primary, paddingHorizontal: 5, paddingVertical: 2, borderRadius: Radius.sm,
+  multiPlayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 10,
+    height: 34,
+    borderRadius: 17,
   },
-  multiQualityText: { color: Colors.textPrimary, fontSize: 9, fontWeight: '800' },
-  singleQualityBadge: {
-    position: 'absolute', top: 4, right: 4,
-    backgroundColor: 'rgba(0,0,0,0.72)', paddingHorizontal: 5, paddingVertical: 2,
-    borderRadius: Radius.sm, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  multiPlayText: { color: '#FFFFFF', fontSize: FontSize.xs, fontWeight: '800' },
+  directPlayCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(229,9,20,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  singleQualityText: { color: Colors.textSecondary, fontSize: 8, fontWeight: '800' },
-  liveBadge: {
-    position: 'absolute', bottom: 4, left: 4, flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: 'rgba(0,0,0,0.75)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: Radius.sm,
-  },
-  liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.error },
-  liveText: { color: Colors.textPrimary, fontSize: 8, fontWeight: '800' },
-  cardInfo: { width: '100%', paddingHorizontal: Spacing.xs, paddingTop: Spacing.xs + 2, alignItems: 'center' },
-  cardName: { color: Colors.textPrimary, fontSize: FontSize.xs, fontWeight: '700', textAlign: 'center' },
-  cardGroup: { color: Colors.textMuted, fontSize: 9, marginTop: 1, textAlign: 'center' },
-  qualityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 3, paddingTop: Spacing.xs, justifyContent: 'center' },
-  qualityTag: { backgroundColor: Colors.surfaceLighter, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3 },
-  qualityTagText: { color: Colors.textSecondary, fontSize: 8, fontWeight: '700' },
   centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 100 },
   loadingText: { color: Colors.textMuted, fontSize: FontSize.md, marginTop: Spacing.md },
   emptyText: { color: Colors.textMuted, fontSize: FontSize.md, marginTop: Spacing.md },
@@ -450,7 +380,6 @@ const styles = StyleSheet.create({
   },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border, alignSelf: 'center', marginBottom: Spacing.md },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginBottom: Spacing.lg },
-  sheetLogoContainer: { width: 56, height: 56, borderRadius: Radius.sm, backgroundColor: Colors.surfaceLight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   sheetTitleContainer: { flex: 1 },
   sheetTitle: { color: Colors.textPrimary, fontSize: FontSize.lg, fontWeight: '800' },
   sheetSubtitle: { color: Colors.textMuted, fontSize: FontSize.sm, marginTop: 2 },
@@ -464,13 +393,26 @@ const styles = StyleSheet.create({
   },
   sheetLabel: { color: Colors.textMuted, fontSize: FontSize.xs, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: Spacing.sm },
   qualityList: {},
-  qualityOptionRow: { flexDirection: 'row', alignItems: 'center' },
-  qualityOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  qualityOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
   qualityOptionLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   qualityIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(229,9,20,0.12)', alignItems: 'center', justifyContent: 'center' },
   qualityOptionLabel: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
   qualityOptionDesc: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: 2 },
-  copyBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  modalPlayPill: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sheetCloseBtn: { marginTop: Spacing.lg, paddingVertical: Spacing.md, borderRadius: Radius.md, backgroundColor: Colors.surfaceLight, alignItems: 'center' },
   sheetCloseText: { color: Colors.textSecondary, fontSize: FontSize.md, fontWeight: '700' },
 });
