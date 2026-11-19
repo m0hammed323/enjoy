@@ -1,13 +1,15 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { ActivityIndicator, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Tv, Play, Search, Layers, Copy, Check } from 'lucide-react-native';
+import { Tv, Play, Search, Layers, Copy, Check, Heart } from 'lucide-react-native';
 import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 import { useConfig } from '@/hooks/useConfig';
 import { useI18n } from '@/hooks/useI18n';
+import { useFavorites } from '@/hooks/useFavorites';
 import { Channel, ChannelQuality } from '@/types';
 import { openInEnjoyPlayer } from '@/utils/enjoyPlayerLauncher';
 import { useCopyLink } from '@/hooks/useCopyLink';
+import { DrawerTriggerButton } from '@/components/SideDrawer';
 
 const { width: screenWidth } = Dimensions.get('window');
 const NUM_COLUMNS = screenWidth < 480 ? 3 : screenWidth < 768 ? 4 : 6;
@@ -104,6 +106,7 @@ function ChannelLogo({ logo, name, size = 'card' }: { logo?: string; name: strin
 export default function ChannelsScreen() {
   const { channels, status } = useConfig();
   const { t } = useI18n();
+  const { isChannelFavorite, toggleChannelFavorite } = useFavorites();
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [qualityModalChannel, setQualityModalChannel] = useState<Channel | null>(null);
@@ -127,7 +130,14 @@ export default function ChannelsScreen() {
   const handlePlay = useCallback((channel: Channel, quality?: ChannelQuality) => {
     const url = quality?.url || channel.streamUrl;
     const qualityLabel = quality?.label || (channel.qualities.length > 1 ? 'AUTO' : channel.qualities[0]?.label || '');
-    void openInEnjoyPlayer({ url, title: channel.name, subtitle: `${channel.group} - ${qualityLabel}` });
+    void openInEnjoyPlayer({
+      url,
+      title: channel.name,
+      subtitle: `${channel.group} - ${qualityLabel}`,
+      titleId: channel.id,
+      poster: channel.logo,
+      mediaType: 'channel',
+    });
     setQualityModalChannel(null);
   }, []);
 
@@ -153,6 +163,7 @@ export default function ChannelsScreen() {
   const renderChannelCard = ({ item }: { item: Channel }) => {
     const hasMultiQuality = item.qualities.length > 1;
     const primaryQuality = item.qualities[0]?.label;
+    const fav = isChannelFavorite(item.id);
 
     return (
       <Pressable
@@ -161,6 +172,20 @@ export default function ChannelsScreen() {
       >
         <View style={styles.cardLogoContainer}>
           <ChannelLogo logo={item.logo} name={item.name} size="card" />
+
+          <Pressable
+            style={styles.favHeartBtn}
+            onPress={(e) => {
+              e.stopPropagation();
+              toggleChannelFavorite(item.id);
+            }}
+          >
+            <Heart
+              size={12}
+              color={fav ? Colors.primary : Colors.textSecondary}
+              fill={fav ? Colors.primary : 'transparent'}
+            />
+          </Pressable>
 
           {hasMultiQuality ? (
             <View style={styles.multiQualityBadge}>
@@ -202,14 +227,18 @@ export default function ChannelsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.stickyHeader}>
-        <View style={styles.header}>
-          <Text style={styles.title}>{t('channels')}</Text>
-          <Text style={styles.subtitle}>
-            {filtered.length !== channels.length
-              ? `${filtered.length} / ${channels.length} ${t('channels')}`
-              : `${channels.length} ${t('channels')}`}
-          </Text>
+        <View style={styles.headerRow}>
+          <View style={styles.headerTextCol}>
+            <Text style={styles.title}>{t('channels')}</Text>
+            <Text style={styles.subtitle}>
+              {filtered.length !== channels.length
+                ? `${filtered.length} / ${channels.length} ${t('channels')}`
+                : `${channels.length} ${t('channels')}`}
+            </Text>
+          </View>
+          <DrawerTriggerButton />
         </View>
+
         <View style={styles.searchBar}>
           <Search size={18} color={Colors.textMuted} />
           <TextInput
@@ -220,6 +249,7 @@ export default function ChannelsScreen() {
             onChangeText={setSearchQuery}
           />
         </View>
+
         {groups.length > 0 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupScroll}>
             <Pressable style={[styles.groupPill, activeGroup === null && styles.groupPillActive]} onPress={() => setActiveGroup(null)}>
@@ -272,6 +302,18 @@ export default function ChannelsScreen() {
                   {qualityModalChannel?.group} • {qualityModalChannel?.qualities.length} جودات متاحة
                 </Text>
               </View>
+              {qualityModalChannel && (
+                <Pressable
+                  style={styles.sheetFavBtn}
+                  onPress={() => toggleChannelFavorite(qualityModalChannel.id)}
+                >
+                  <Heart
+                    size={20}
+                    color={isChannelFavorite(qualityModalChannel.id) ? Colors.primary : Colors.textSecondary}
+                    fill={isChannelFavorite(qualityModalChannel.id) ? Colors.primary : 'transparent'}
+                  />
+                </Pressable>
+              )}
             </View>
             <Text style={styles.sheetLabel}>{t('selectStreamQuality')}</Text>
             <ScrollView style={styles.qualityList}>
@@ -310,7 +352,15 @@ export default function ChannelsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   stickyHeader: { zIndex: 50, backgroundColor: Colors.background },
-  header: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.sm },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+  },
+  headerTextCol: { flex: 1 },
   title: { color: Colors.textPrimary, fontSize: FontSize.xxl, fontWeight: '800' },
   subtitle: { color: Colors.textMuted, fontSize: FontSize.sm, marginTop: 2 },
   searchBar: {
@@ -356,6 +406,17 @@ const styles = StyleSheet.create({
   monogramText: { fontSize: FontSize.md, fontWeight: '900', letterSpacing: 0.5 },
   sheetMonogramText: { fontSize: FontSize.lg, fontWeight: '900', letterSpacing: 0.5 },
   monogramTvTag: { position: 'absolute', bottom: 3, right: 4, opacity: 0.75 },
+  favHeartBtn: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.68)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   multiQualityBadge: {
     position: 'absolute', top: 4, right: 4, flexDirection: 'row', alignItems: 'center', gap: 2,
     backgroundColor: Colors.primary, paddingHorizontal: 5, paddingVertical: 2, borderRadius: Radius.sm,
@@ -393,6 +454,14 @@ const styles = StyleSheet.create({
   sheetTitleContainer: { flex: 1 },
   sheetTitle: { color: Colors.textPrimary, fontSize: FontSize.lg, fontWeight: '800' },
   sheetSubtitle: { color: Colors.textMuted, fontSize: FontSize.sm, marginTop: 2 },
+  sheetFavBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sheetLabel: { color: Colors.textMuted, fontSize: FontSize.xs, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: Spacing.sm },
   qualityList: {},
   qualityOptionRow: { flexDirection: 'row', alignItems: 'center' },

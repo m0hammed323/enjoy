@@ -1,5 +1,6 @@
 import * as Linking from 'expo-linking';
 import { Alert, Platform } from 'react-native';
+import { recordPlaybackHistory } from '@/hooks/useWatchHistory';
 
 export interface EnjoyPlayerOptions {
   url: string;
@@ -7,17 +8,22 @@ export interface EnjoyPlayerOptions {
   subtitle?: string;
   referer?: string;
   userAgent?: string;
+  titleId?: string;
+  episodeId?: string;
+  poster?: string;
+  mediaType?: 'channel' | 'movie' | 'series';
 }
 
-/**
- * فتح الفيديو أو القناة في مشغل Enjoy Player الخارجي
- */
 export async function openInEnjoyPlayer({
   url,
   title = 'فيديو',
   subtitle = '',
   referer = '',
   userAgent = '',
+  titleId,
+  episodeId,
+  poster,
+  mediaType = 'channel',
 }: EnjoyPlayerOptions): Promise<void> {
   if (!url || !url.trim()) {
     Alert.alert('خطأ', 'رابط التشغيل غير متوفر');
@@ -25,6 +31,16 @@ export async function openInEnjoyPlayer({
   }
 
   const cleanUrl = url.trim();
+
+  recordPlaybackHistory({
+    titleId: titleId || `stream-${title}-${cleanUrl.slice(-24)}`,
+    episodeId,
+    label: title,
+    subtitle,
+    poster,
+    mediaType,
+    url: cleanUrl,
+  });
 
   const queryParams = new URLSearchParams();
   queryParams.append('url', cleanUrl);

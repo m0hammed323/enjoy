@@ -7,10 +7,12 @@ import { useFonts } from 'expo-font';
 import { WatchlistProvider } from '@/hooks/useWatchlist';
 import { WatchHistoryProvider } from '@/hooks/useWatchHistory';
 import { FavoritesProvider } from '@/hooks/useFavorites';
+import { DrawerProvider } from '@/hooks/useDrawer';
 import { I18nProvider, useI18n } from '@/hooks/useI18n';
 import { ConfigProvider, useConfig } from '@/hooks/useConfig';
+import { SideDrawer } from '@/components/SideDrawer';
 import { setTitles } from '@/data/titles';
-import { registerBackInterceptor, dispatchBackAction, exitAppCleanly, BackActionSource } from '@/utils/backNavigation';
+import { registerBackInterceptor, dispatchBackAction, exitAppCleanly } from '@/utils/backNavigation';
 import {
   Inter_400Regular,
   Inter_600SemiBold,
@@ -60,8 +62,10 @@ export default function RootLayout() {
         <WatchHistoryProvider>
           <FavoritesProvider>
             <WatchlistProvider>
-              <AppGate />
-              <StatusBar style="light" />
+              <DrawerProvider>
+                <AppGate />
+                <StatusBar style="light" />
+              </DrawerProvider>
             </WatchlistProvider>
           </FavoritesProvider>
         </WatchHistoryProvider>
@@ -106,7 +110,6 @@ function AppGate() {
     }
   }, [status, config, announcementShown, setAnnouncementShown]);
 
-  // Keep a root history entry available so browser/WebView Back reaches our dispatcher.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     if (isRootRoute(pathname) && !guardInstalledRef.current) {
@@ -133,7 +136,6 @@ function AppGate() {
         setShowAnnouncement(false);
         return true;
       }
-      // A force-update dialog cannot be dismissed; consume Back rather than leaving it behind.
       if (forceUpdateRef.current) return true;
       return false;
     }, 1000);
@@ -174,11 +176,10 @@ function AppGate() {
       if (disposed) void listener.remove();
       else removeCapacitorListener = () => { void listener.remove(); };
     }).catch(() => {
-      // Capacitor App is unavailable in a regular web/React Native runtime.
+      // Capacitor App unavailable in regular web runtime
     });
 
     const onPopState = () => {
-      // Restore the persistent root guard before route handling, so a second Back is intercepted too.
       if (isRootRoute(pathnameRef.current) && typeof window !== 'undefined') {
         window.history.pushState(
           { ...(window.history.state || {}), enjoyRootGuard: true },
@@ -245,10 +246,12 @@ function AppGate() {
   }
 
   return (
-    <>
+    <View style={{ flex: 1 }}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="+not-found" />
       </Stack>
+
+      <SideDrawer />
 
       <Modal
         visible={showAnnouncement}
@@ -301,7 +304,7 @@ function AppGate() {
           </View>
         </View>
       )}
-    </>
+    </View>
   );
 }
 

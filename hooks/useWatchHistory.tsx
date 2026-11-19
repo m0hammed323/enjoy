@@ -5,13 +5,19 @@ export interface HistoryEntry {
   titleId: string;
   episodeId?: string;
   label: string;
+  subtitle?: string;
+  poster?: string;
+  mediaType?: 'channel' | 'movie' | 'series';
   url: string;
   timestamp: number;
 }
 
+export type NewHistoryEntry = Omit<HistoryEntry, 'id' | 'timestamp'>;
+
 interface WatchHistoryContextType {
   history: HistoryEntry[];
-  addToHistory: (entry: Omit<HistoryEntry, 'id' | 'timestamp'>) => void;
+  addToHistory: (entry: NewHistoryEntry) => void;
+  removeFromHistory: (id: string) => void;
   isWatched: (titleId: string, episodeId?: string) => boolean;
   clearHistory: () => void;
 }
@@ -20,12 +26,21 @@ const WatchHistoryContext = createContext<WatchHistoryContextType | null>(null);
 const STORAGE_KEY = 'enjoy_watch_history';
 const MAX_HISTORY = 50;
 
+let globalHistoryRecorder: ((entry: NewHistoryEntry) => void) | null = null;
+
+export function recordPlaybackHistory(entry: NewHistoryEntry): void {
+  if (globalHistoryRecorder) {
+    globalHistoryRecorder(entry);
+  }
+}
+
 function loadHistory(): HistoryEntry[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as HistoryEntry[];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as HistoryEntry[]) : [];
   } catch {
     return [];
   }
@@ -47,7 +62,7 @@ export function WatchHistoryProvider({ children }: { children: ReactNode }) {
     setHistory(loadHistory());
   }, []);
 
-  const addToHistory = useCallback((entry: Omit<HistoryEntry, 'id' | 'timestamp'>) => {
+  const addToHistory = useCallback((entry: NewHistoryEntry) => {
     setHistory((prev) => {
       const filtered = prev.filter((h) =>
         entry.episodeId
@@ -55,9 +70,26 @@ export function WatchHistoryProvider({ children }: { children: ReactNode }) {
           : !(h.titleId === entry.titleId && !h.episodeId)
       );
       const next = [
-        { ...entry, id: `h-${Date.now()}`, timestamp: Date.now() },
+        { ...entry, id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, timestamp: Date.now() },
         ...filtered,
       ].slice(0, MAX_HISTORY);
+      saveHistory(next);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    globalHistoryRecorder = addToHistory;
+    return () => {
+      if (globalHistoryRecorder === addToHistory) {
+        globalHistoryRecorder = null;
+      }
+    };
+  }, [addToHistory]);
+
+  const removeFromHistory = useCallback((id: string) => {
+    setHistory((prev) => {
+      const next = prev.filter((h) => h.id !== id);
       saveHistory(next);
       return next;
     });
@@ -79,7 +111,7 @@ export function WatchHistoryProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <WatchHistoryContext.Provider value={{ history, addToHistory, isWatched, clearHistory }}>
+    <WatchHistoryContext.Provider value={{ history, addToHistory, removeFromHistory, isWatched, clearHistory }}>
       {children}
     </WatchHistoryContext.Provider>
   );
