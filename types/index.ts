@@ -60,6 +60,8 @@ export interface RemoteConfig {
   app_name: string;
   app_icon: string;
   app_version: string;
+  min_version?: string;
+  blocked_versions?: string[];
   force_update: boolean;
   update_url: string;
   update_notes: string;

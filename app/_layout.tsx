@@ -12,6 +12,7 @@ import { I18nProvider, useI18n } from '@/hooks/useI18n';
 import { ConfigProvider, useConfig } from '@/hooks/useConfig';
 import { SideDrawer } from '@/components/SideDrawer';
 import { setTitles } from '@/data/titles';
+import { APP_VERSION } from '@/constants/appVersion';
 import { registerBackInterceptor, dispatchBackAction, exitAppCleanly } from '@/utils/backNavigation';
 import {
   Inter_400Regular,
@@ -39,6 +40,19 @@ SplashScreen.preventAutoHideAsync();
 
 const isRootRoute = (path: string) =>
   path === '/' || path === '/(tabs)' || path === '/(tabs)/index' || path === '';
+
+function compareVersions(current: string, target: string): number {
+  const cParts = current.replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const tParts = target.replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(cParts.length, tParts.length);
+  for (let i = 0; i < len; i++) {
+    const c = cParts[i] ?? 0;
+    const t = tParts[i] ?? 0;
+    if (c < t) return -1;
+    if (c > t) return 1;
+  }
+  return 0;
+}
 
 export default function RootLayout() {
   useFrameworkReady();
@@ -76,7 +90,7 @@ export default function RootLayout() {
 
 function AppGate() {
   const { config, titles, status, retry, announcementShown, setAnnouncementShown } = useConfig();
-  const { t } = useI18n();
+  const { t, isRTL } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -102,11 +116,25 @@ function AppGate() {
 
   useEffect(() => {
     if (status === 'ready' && config) {
+      const targetMinVersion = config.min_version || config.app_version || '';
+      const isOutdated =
+        Boolean(config.force_update) &&
+        Boolean(targetMinVersion) &&
+        compareVersions(APP_VERSION, targetMinVersion) < 0;
+      const isExplicitlyBlocked =
+        Array.isArray(config.blocked_versions) && config.blocked_versions.includes(APP_VERSION);
+
+      if (isOutdated || isExplicitlyBlocked) {
+        setShowForceUpdate(true);
+        return;
+      } else {
+        setShowForceUpdate(false);
+      }
+
       if (config.announcement?.active && !announcementShown) {
         setShowAnnouncement(true);
         setAnnouncementShown(true);
       }
-      if (config.force_update) setShowForceUpdate(true);
     }
   }, [status, config, announcementShown, setAnnouncementShown]);
 
@@ -175,9 +203,7 @@ function AppGate() {
     }).then((listener) => {
       if (disposed) void listener.remove();
       else removeCapacitorListener = () => { void listener.remove(); };
-    }).catch(() => {
-      // Capacitor App unavailable in regular web runtime
-    });
+    }).catch(() => {});
 
     const onPopState = () => {
       if (isRootRoute(pathnameRef.current) && typeof window !== 'undefined') {
@@ -251,7 +277,7 @@ function AppGate() {
         <Stack.Screen name="+not-found" />
       </Stack>
 
-      <SideDrawer />
+      {!showForceUpdate && <SideDrawer />}
 
       <Modal
         visible={showAnnouncement}
@@ -275,15 +301,27 @@ function AppGate() {
         </View>
       </Modal>
 
-      <Modal visible={showForceUpdate} transparent animationType="fade" onRequestClose={() => {}}>
-        <View style={gateStyles.modalOverlay}>
+      <Modal visible={showForceUpdate} transparent={false} animationType="fade" onRequestClose={() => {}}>
+        <View style={gateStyles.lockScreenOverlay}>
           <View style={gateStyles.modalCard}>
             <View style={gateStyles.modalIconRow}>
-              <Download size={28} color={Colors.primary} />
+              <Download size={34} color={Colors.primary} />
             </View>
             <Text style={gateStyles.modalTitle}>{t('updateAvailable')}</Text>
-            <ScrollView>
-              <Text style={gateStyles.modalMsg}>{config?.update_notes || ''}</Text>
+            <View style={gateStyles.versionComparePill}>
+              <Text style={gateStyles.versionCompareText}>
+                {isRTL
+                  ? `نسختك: v${APP_VERSION}  ←  المطلوبة: v${config?.min_version || config?.app_version || ''}`
+                  : `Your version: v${APP_VERSION}  →  Required: v${config?.min_version || config?.app_version || ''}`}
+              </Text>
+            </View>
+            <ScrollView style={{ maxHeight: 180 }}>
+              <Text style={gateStyles.modalMsg}>
+                {config?.update_notes ||
+                  (isRTL
+                    ? 'تم إيقاف هذا الإصدار القديم. يرجى تحميل أحدث إصدار للاستمرار في المشاهدة.'
+                    : 'This older version is no longer supported. Please download the latest version to continue.')}
+              </Text>
             </ScrollView>
             <Pressable
               style={gateStyles.modalBtn}
@@ -317,10 +355,22 @@ const gateStyles = StyleSheet.create({
   retryText: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
   maintenanceTitle: { color: Colors.textPrimary, fontSize: FontSize.xxl, fontWeight: '800', marginTop: Spacing.lg, marginBottom: Spacing.sm },
   maintenanceMsg: { color: Colors.textSecondary, fontSize: FontSize.md, textAlign: 'center', lineHeight: 24 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
-  modalCard: { backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.lg, width: '100%', maxWidth: 380 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
+  lockScreenOverlay: { flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
+  modalCard: { backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.lg, width: '100%', maxWidth: 380, borderWidth: 1, borderColor: Colors.border },
   modalIconRow: { alignItems: 'center', marginBottom: Spacing.md },
-  modalTitle: { color: Colors.textPrimary, fontSize: FontSize.xl, fontWeight: '800', textAlign: 'center', marginBottom: Spacing.md },
+  modalTitle: { color: Colors.textPrimary, fontSize: FontSize.xl, fontWeight: '800', textAlign: 'center', marginBottom: Spacing.sm },
+  versionComparePill: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(229, 9, 20, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(229, 9, 20, 0.35)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: Radius.pill,
+    marginBottom: Spacing.md,
+  },
+  versionCompareText: { color: Colors.primary, fontSize: 11, fontWeight: '800' },
   modalMsg: { color: Colors.textSecondary, fontSize: FontSize.md, lineHeight: 24, marginBottom: Spacing.lg, textAlign: 'center' },
   modalBtn: { backgroundColor: Colors.primary, paddingVertical: Spacing.md, borderRadius: Radius.md, alignItems: 'center' },
   modalBtnText: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
