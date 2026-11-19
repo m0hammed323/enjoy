@@ -7,43 +7,85 @@ interface ParsedEntry {
   embedUrl: string;
 }
 
+const QUALITY_BRACKET_REGEX =
+  /[\[\(\{]\s*(?:4K\vert{}UHD\vert{}8K\vert{}2K\vert{}FHD\vert{}FULL\s*HD\vert{}HD\vert{}SD\vert{}HQ\vert{}LQ\vert{}LOW\vert{}HIGH\vert{}MED\vert{}MEDIUM\vert{}AUTO\vert{}HEVC\vert{}H\.?265\vert{}H\.?264\vert{}1080P?\vert{}720P?\vert{}576P?\vert{}480P?\vert{}360P?\vert{}240P?\vert{}50\s*FPS\vert{}60\s*FPS\vert{}BACKUP\vert{}BKP\vert{}MAIN\vert{}VIP\vert{}SERVER\s*\d*\vert{}S\d+\vert{}جودة\s*عالية\vert{}جودة\s*متوسطة\vert{}جودة\s*منخفضة\vert{}جودة\s*ضعيفة\vert{}اتش\s*دي\vert{}اس\s*دي\vert{}فول\s*اتش\s*دي\vert{}فور\s*كي\vert{}سيرفر\s*\d*\vert{}احتياطي\vert{}بديل)\s*[\]\)\}]/gi;
+
+const QUALITY_TOKEN_REGEX =
+  /(?:^|[\s\-_|:/•]+)(?:4K|UHD|8K|2K|FHD|FULL\s*HD|HD|SD|HQ|LQ|LOW|HIGH|HEVC|H\.?265|H\.?264|1080P?|720P?|576P?|480P?|360P?|240P?|50\s*FPS|60\s*FPS|BACKUP|BKP|VIP|اتش\s*دي|اس\s*دي|فول\s*اتش\s*دي|فور\s*كي|جودة\s*عالية|جودة\s*متوسطة|جودة\s*منخفضة|جودة\s*ضعيفة|احتياطي|بديل)(?=$|[\s\-_|:/•]+)/gi;
+
 function normalizeChannelName(name: string): string {
-  return name
-    .replace(/\s*(?:HD|FHD|SD|4K|1080p|720p|480p|LOW|HIGH)\s*/gi, '')
-    .replace(/\s*-\s*(?:HD|FHD|SD|4K|1080p|720p|480p)\s*/gi, '')
+  const cleaned = name
+    .replace(QUALITY_BRACKET_REGEX, ' ')
+    .replace(QUALITY_TOKEN_REGEX, ' ')
+    .replace(/^[\s\-_|:/•]+|[\s\-_|:/•]+$/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
+
+  return cleaned || name.trim();
 }
 
-function detectQualityLabel(name: string): string {
-  const upper = name.toUpperCase();
-  if (upper.includes('4K')) return '4K';
-  if (upper.includes('1080') || upper.includes('FHD')) return 'FHD';
-  if (upper.includes('720')) return '720p';
-  if (upper.includes('480') || upper.includes('SD')) return 'SD';
-  if (upper.includes('HD')) return 'HD';
+function toCanonicalKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[^\u0600-\u06FFa-z0-9]/g, '');
+}
+
+function detectQualityLabel(name: string, url = ''): string {
+  const combined = `${name} ${url}`.toUpperCase();
+  if (combined.includes('4K') || combined.includes('UHD') || combined.includes('2160')) return '4K';
+  if (combined.includes('1080') || combined.includes('FHD') || combined.includes('FULL HD') || name.includes('فول اتش دي') || name.includes('جودة عالية')) return 'FHD';
+  if (combined.includes('720')) return '720p';
+  if (combined.includes('576') || combined.includes('480') || combined.includes('SD') || name.includes('اس دي') || name.includes('جودة متوسطة')) return 'SD';
+  if (combined.includes('360') || combined.includes('240') || combined.includes('LOW') || combined.includes('LQ') || name.includes('منخفضة') || name.includes('ضعيفة')) return 'LOW';
+  if (combined.includes('HD') || name.includes('اتش دي')) return 'HD';
   return 'AUTO';
+}
+
+const QUALITY_RANK: Record<string, number> = {
+  '4K': 1,
+  'FHD': 2,
+  'HD': 3,
+  '720p': 4,
+  'SD': 5,
+  '480p': 6,
+  'LOW': 7,
+  'AUTO': 8,
+};
+
+function getQualityRank(label: string): number {
+  const base = label.split(' ')[0];
+  return QUALITY_RANK[base] ?? 9;
 }
 
 export function parseM3UChannels(content: string): Channel[] {
   const lines = content.split('\n');
   const rawEntries: { name: string; logo: string; group: string; url: string }[] = [];
+  const seenUrls = new Set<string>();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (line.startsWith('#EXTINF')) {
       const nameMatch = line.match(/,(.+)$/);
-      const logoMatch = line.match(/tvg-logo="([^"]*)"/);
-      const groupMatch = line.match(/group-title="([^"]*)"/);
+      const logoMatch = line.match(/tvg-logo="([^"]*)"/i);
+      const groupMatch = line.match(/group-title="([^"]*)"/i);
 
       const nextLine = (lines[i + 1] || '').trim();
       const urlMatch = nextLine.match(/(https?:\/\/[^\s<>"]+)/i);
 
       if (nameMatch && urlMatch) {
+        const cleanUrl = urlMatch[1].trim();
+        if (seenUrls.has(cleanUrl)) continue;
+        seenUrls.add(cleanUrl);
+
         rawEntries.push({
           name: nameMatch[1].trim(),
           logo: logoMatch ? logoMatch[1].trim() : '',
-          group: groupMatch ? groupMatch[1].trim() : 'Other',
-          url: urlMatch[1].trim(),
+          group: groupMatch ? groupMatch[1].trim() : 'أخرى',
+          url: cleanUrl,
         });
       }
     }
@@ -53,25 +95,50 @@ export function parseM3UChannels(content: string): Channel[] {
 
   rawEntries.forEach((entry, index) => {
     const baseName = normalizeChannelName(entry.name);
-    const qualityLabel = detectQualityLabel(entry.name);
-    const key = `${baseName}-${entry.group}`.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const cleanGroup = normalizeChannelName(entry.group) || entry.group;
+    const baseQualityLabel = detectQualityLabel(entry.name, entry.url);
+
+    const canonicalName = toCanonicalKey(baseName);
+    const canonicalGroup = toCanonicalKey(cleanGroup);
+    const key = canonicalName.length >= 3
+      ? canonicalName
+      : `${canonicalName || 'ch'}-${canonicalGroup || index}`;
 
     if (grouped[key]) {
-      grouped[key].qualities.push({ label: qualityLabel, url: entry.url });
+      const existing = grouped[key];
+      if (!existing.logo && entry.logo) {
+        existing.logo = entry.logo;
+      }
+      if (!existing.qualities.some((q) => q.url === entry.url)) {
+        const sameLabelCount = existing.qualities.filter(
+          (q) => q.label === baseQualityLabel || q.label.startsWith(`${baseQualityLabel} `)
+        ).length;
+        const finalLabel = sameLabelCount > 0 ? `${baseQualityLabel} ${sameLabelCount + 1}` : baseQualityLabel;
+        existing.qualities.push({ label: finalLabel, url: entry.url });
+      }
     } else {
-      const qualities: ChannelQuality[] = [{ label: qualityLabel, url: entry.url }];
+      const safeIdPart = toCanonicalKey(baseName).slice(0, 24) || 'channel';
       grouped[key] = {
-        id: `ch-${index}-${baseName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 20)}`,
+        id: `ch-${index}-${safeIdPart}`,
         name: baseName,
         logo: entry.logo,
         group: entry.group,
         streamUrl: entry.url,
-        qualities,
+        qualities: [{ label: baseQualityLabel, url: entry.url }],
       };
     }
   });
 
-  return Object.values(grouped);
+  return Object.values(grouped).map((channel) => {
+    const sortedQualities = [...channel.qualities].sort(
+      (a, b) => getQualityRank(a.label) - getQualityRank(b.label)
+    );
+    return {
+      ...channel,
+      qualities: sortedQualities,
+      streamUrl: sortedQualities[0]?.url || channel.streamUrl,
+    };
+  });
 }
 
 export function parseM3U(content: string): ParsedEntry[] {
@@ -82,11 +149,14 @@ export function parseM3U(content: string): ParsedEntry[] {
     const line = lines[i].trim();
     if (line.startsWith('#EXTINF')) {
       const nameMatch = line.match(/,(.+)$/);
-      const logoMatch = line.match(/tvg-logo="([^"]*)"/);
-      const groupMatch = line.match(/group-title="([^"]*)"/);
+      const logoMatch = line.match(/tvg-logo="([^"]*)"/i);
+      const groupMatch = line.match(/group-title="([^"]*)"/i);
 
       const nextLine = (lines[i + 1] || '').trim();
-      const embedMatch = nextLine.match(/SRC="([^"]*)"/i) || nextLine.match(/src="([^"]*)"/i) || nextLine.match(/(https?:\/\/[^\s<>"]+)/i);
+      const embedMatch =
+        nextLine.match(/SRC="([^"]*)"/i) ||
+        nextLine.match(/src="([^"]*)"/i) ||
+        nextLine.match(/(https?:\/\/[^\s<>"]+)/i);
 
       if (nameMatch && embedMatch) {
         entries.push({

@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { ActivityIndicator, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Tv, Play, Search, Layers, Copy, Check } from 'lucide-react-native';
@@ -13,7 +13,93 @@ const { width: screenWidth } = Dimensions.get('window');
 const NUM_COLUMNS = screenWidth < 480 ? 3 : screenWidth < 768 ? 4 : 6;
 const CARD_GAP = Spacing.sm;
 const CARD_WIDTH = Math.floor((screenWidth - Spacing.lg * 2 - CARD_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS);
-const CARD_HEIGHT = Math.floor(CARD_WIDTH * 1.1);
+const CARD_HEIGHT = Math.floor(CARD_WIDTH * 1.15);
+
+const AVATAR_PALETTE = [
+  { bg: 'rgba(229, 9, 20, 0.18)', border: 'rgba(229, 9, 20, 0.45)', text: '#FF4D5A' },
+  { bg: 'rgba(59, 130, 246, 0.18)', border: 'rgba(59, 130, 246, 0.45)', text: '#60A5FA' },
+  { bg: 'rgba(16, 185, 129, 0.18)', border: 'rgba(16, 185, 129, 0.45)', text: '#34D399' },
+  { bg: 'rgba(168, 85, 247, 0.18)', border: 'rgba(168, 85, 247, 0.45)', text: '#C084FC' },
+  { bg: 'rgba(245, 158, 11, 0.18)', border: 'rgba(245, 158, 11, 0.45)', text: '#FBBF24' },
+  { bg: 'rgba(6, 182, 212, 0.18)', border: 'rgba(6, 182, 212, 0.45)', text: '#22D3EE' },
+];
+
+function getChannelMonogram(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  }
+  return name.trim().slice(0, 2).toUpperCase() || 'TV';
+}
+
+function getAvatarTheme(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
+}
+
+function getQualityDescription(label: string): string {
+  const base = label.split(' ')[0];
+  switch (base) {
+    case '4K': return 'Ultra HD 2160p • أعلى دقة';
+    case 'FHD': return 'Full HD 1080p • دقة عالية جدًا';
+    case 'HD': return 'HD 720p • دقة عالية';
+    case '720p': return 'HD 720p • بث مستقر';
+    case 'SD': return 'SD 480p • دقة متوسطة';
+    case '480p': return '480p • استهلاك متوسط';
+    case 'LOW': return 'توفير البيانات • للإنترنت الضعيف';
+    default: return 'بث مباشر تلقائي';
+  }
+}
+
+function ChannelLogo({ logo, name, size = 'card' }: { logo?: string; name: string; size?: 'card' | 'sheet' }) {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [logo]);
+
+  const isValidUri = Boolean(logo && /^https?:\/\//i.test(logo.trim()));
+  const avatarTheme = useMemo(() => getAvatarTheme(name), [name]);
+  const monogram = useMemo(() => getChannelMonogram(name), [name]);
+
+  if (isValidUri && !imgError) {
+    return (
+      <View style={size === 'card' ? styles.logoInnerPlate : styles.sheetLogoInnerPlate}>
+        <Image
+          source={{ uri: logo!.trim() }}
+          style={styles.cardLogo}
+          resizeMode="contain"
+          onError={() => setImgError(true)}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.monogramBox,
+        { backgroundColor: avatarTheme.bg, borderColor: avatarTheme.border },
+      ]}
+    >
+      <Text
+        style={[
+          size === 'card' ? styles.monogramText : styles.sheetMonogramText,
+          { color: avatarTheme.text },
+        ]}
+        numberOfLines={1}
+      >
+        {monogram}
+      </Text>
+      <View style={styles.monogramTvTag}>
+        <Tv size={size === 'card' ? 10 : 12} color={avatarTheme.text} />
+      </View>
+    </View>
+  );
+}
 
 export default function ChannelsScreen() {
   const { channels, status } = useConfig();
@@ -66,33 +152,44 @@ export default function ChannelsScreen() {
 
   const renderChannelCard = ({ item }: { item: Channel }) => {
     const hasMultiQuality = item.qualities.length > 1;
+    const primaryQuality = item.qualities[0]?.label;
+
     return (
-      <Pressable style={styles.card} onPress={() => handleChannelPress(item)}>
+      <Pressable
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+        onPress={() => handleChannelPress(item)}
+      >
         <View style={styles.cardLogoContainer}>
-          {item.logo ? (
-            <Image source={{ uri: item.logo }} style={styles.cardLogo} resizeMode="contain" />
-          ) : (
-            <View style={styles.logoPlaceholder}><Tv size={28} color={Colors.textMuted} /></View>
-          )}
-          {hasMultiQuality && (
+          <ChannelLogo logo={item.logo} name={item.name} size="card" />
+
+          {hasMultiQuality ? (
             <View style={styles.multiQualityBadge}>
               <Layers size={9} color={Colors.textPrimary} />
               <Text style={styles.multiQualityText}>{item.qualities.length}</Text>
             </View>
+          ) : (
+            primaryQuality && primaryQuality !== 'AUTO' && (
+              <View style={styles.singleQualityBadge}>
+                <Text style={styles.singleQualityText}>{primaryQuality}</Text>
+              </View>
+            )
           )}
+
           <View style={styles.liveBadge}>
             <View style={styles.liveDot} />
             <Text style={styles.liveText}>{t('live')}</Text>
           </View>
         </View>
+
         <View style={styles.cardInfo}>
           <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
           <Text style={styles.cardGroup} numberOfLines={1}>{item.group}</Text>
         </View>
+
         {hasMultiQuality && (
           <View style={styles.qualityRow}>
-            {item.qualities.slice(0, 3).map((q) => (
-              <View key={q.label} style={styles.qualityTag}>
+            {item.qualities.slice(0, 3).map((q, idx) => (
+              <View key={`${q.label}-${idx}`} style={styles.qualityTag}>
                 <Text style={styles.qualityTagText}>{q.label}</Text>
               </View>
             ))}
@@ -107,7 +204,11 @@ export default function ChannelsScreen() {
       <View style={styles.stickyHeader}>
         <View style={styles.header}>
           <Text style={styles.title}>{t('channels')}</Text>
-          <Text style={styles.subtitle}>{channels.length} {t('channels')}</Text>
+          <Text style={styles.subtitle}>
+            {filtered.length !== channels.length
+              ? `${filtered.length} / ${channels.length} ${t('channels')}`
+              : `${channels.length} ${t('channels')}`}
+          </Text>
         </View>
         <View style={styles.searchBar}>
           <Search size={18} color={Colors.textMuted} />
@@ -161,15 +262,15 @@ export default function ChannelsScreen() {
             <View style={styles.sheetHandle} />
             <View style={styles.sheetHeader}>
               <View style={styles.sheetLogoContainer}>
-                {qualityModalChannel?.logo ? (
-                  <Image source={{ uri: qualityModalChannel.logo }} style={styles.sheetLogo} resizeMode="contain" />
-                ) : (
-                  <Tv size={28} color={Colors.textMuted} />
+                {qualityModalChannel && (
+                  <ChannelLogo logo={qualityModalChannel.logo} name={qualityModalChannel.name} size="sheet" />
                 )}
               </View>
               <View style={styles.sheetTitleContainer}>
                 <Text style={styles.sheetTitle} numberOfLines={1}>{qualityModalChannel?.name}</Text>
-                <Text style={styles.sheetSubtitle} numberOfLines={1}>{qualityModalChannel?.group}</Text>
+                <Text style={styles.sheetSubtitle} numberOfLines={1}>
+                  {qualityModalChannel?.group} • {qualityModalChannel?.qualities.length} جودات متاحة
+                </Text>
               </View>
             </View>
             <Text style={styles.sheetLabel}>{t('selectStreamQuality')}</Text>
@@ -178,11 +279,14 @@ export default function ChannelsScreen() {
                 const copyItemId = `quality-${idx}`;
                 const isCopied = copiedId === copyItemId;
                 return (
-                  <View key={q.label} style={styles.qualityOptionRow}>
+                  <View key={`${q.label}-${idx}`} style={styles.qualityOptionRow}>
                     <Pressable style={styles.qualityOption} onPress={() => qualityModalChannel && handlePlay(qualityModalChannel, q)}>
                       <View style={styles.qualityOptionLeft}>
                         <View style={styles.qualityIconCircle}><Layers size={16} color={Colors.primary} /></View>
-                        <Text style={styles.qualityOptionLabel}>{q.label}</Text>
+                        <View>
+                          <Text style={styles.qualityOptionLabel}>{q.label}</Text>
+                          <Text style={styles.qualityOptionDesc}>{getQualityDescription(q.label)}</Text>
+                        </View>
                       </View>
                       <Play size={18} color={Colors.primary} fill={Colors.primary} />
                     </Pressable>
@@ -222,22 +326,50 @@ const styles = StyleSheet.create({
   groupPillText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
   groupPillTextActive: { color: Colors.textPrimary, fontWeight: '700' },
   list: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxl },
-  card: { width: CARD_WIDTH, backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.xs + 2, alignItems: 'center' },
+  card: {
+    width: CARD_WIDTH, backgroundColor: Colors.surface, borderRadius: Radius.md,
+    padding: Spacing.xs + 2, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+  },
+  cardPressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
   cardLogoContainer: {
-    width: '100%', height: CARD_HEIGHT * 0.6, borderRadius: Radius.sm,
+    width: '100%', height: CARD_HEIGHT * 0.62, borderRadius: Radius.sm,
     backgroundColor: Colors.surfaceLight, alignItems: 'center', justifyContent: 'center',
     overflow: 'hidden', position: 'relative',
   },
+  logoInnerPlate: {
+    width: '86%', height: '82%', borderRadius: Radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    padding: 6, alignItems: 'center', justifyContent: 'center',
+  },
+  sheetLogoInnerPlate: {
+    width: '100%', height: '100%',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    padding: 6, alignItems: 'center', justifyContent: 'center',
+  },
   cardLogo: { width: '100%', height: '100%' },
-  logoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  monogramBox: {
+    width: '82%', height: '78%', borderRadius: Radius.sm,
+    borderWidth: 1, alignItems: 'center', justifyContent: 'center',
+    position: 'relative',
+  },
+  monogramText: { fontSize: FontSize.md, fontWeight: '900', letterSpacing: 0.5 },
+  sheetMonogramText: { fontSize: FontSize.lg, fontWeight: '900', letterSpacing: 0.5 },
+  monogramTvTag: { position: 'absolute', bottom: 3, right: 4, opacity: 0.75 },
   multiQualityBadge: {
     position: 'absolute', top: 4, right: 4, flexDirection: 'row', alignItems: 'center', gap: 2,
-    backgroundColor: 'rgba(229,9,20,0.85)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: Radius.sm,
+    backgroundColor: Colors.primary, paddingHorizontal: 5, paddingVertical: 2, borderRadius: Radius.sm,
   },
   multiQualityText: { color: Colors.textPrimary, fontSize: 9, fontWeight: '800' },
+  singleQualityBadge: {
+    position: 'absolute', top: 4, right: 4,
+    backgroundColor: 'rgba(0,0,0,0.72)', paddingHorizontal: 5, paddingVertical: 2,
+    borderRadius: Radius.sm, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  singleQualityText: { color: Colors.textSecondary, fontSize: 8, fontWeight: '800' },
   liveBadge: {
     position: 'absolute', bottom: 4, left: 4, flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: Radius.sm,
+    backgroundColor: 'rgba(0,0,0,0.75)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: Radius.sm,
   },
   liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.error },
   liveText: { color: Colors.textPrimary, fontSize: 8, fontWeight: '800' },
@@ -258,7 +390,6 @@ const styles = StyleSheet.create({
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border, alignSelf: 'center', marginBottom: Spacing.md },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginBottom: Spacing.lg },
   sheetLogoContainer: { width: 56, height: 56, borderRadius: Radius.sm, backgroundColor: Colors.surfaceLight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  sheetLogo: { width: '100%', height: '100%' },
   sheetTitleContainer: { flex: 1 },
   sheetTitle: { color: Colors.textPrimary, fontSize: FontSize.lg, fontWeight: '800' },
   sheetSubtitle: { color: Colors.textMuted, fontSize: FontSize.sm, marginTop: 2 },
@@ -269,6 +400,7 @@ const styles = StyleSheet.create({
   qualityOptionLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   qualityIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(229,9,20,0.12)', alignItems: 'center', justifyContent: 'center' },
   qualityOptionLabel: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
+  qualityOptionDesc: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: 2 },
   copyBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   sheetCloseBtn: { marginTop: Spacing.lg, paddingVertical: Spacing.md, borderRadius: Radius.md, backgroundColor: Colors.surfaceLight, alignItems: 'center' },
   sheetCloseText: { color: Colors.textSecondary, fontSize: FontSize.md, fontWeight: '700' },
