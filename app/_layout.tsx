@@ -5,6 +5,8 @@ import { App } from '@capacitor/app';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { useFonts } from 'expo-font';
 import { WatchlistProvider } from '@/hooks/useWatchlist';
+import { WatchHistoryProvider } from '@/hooks/useWatchHistory';
+import { FavoritesProvider } from '@/hooks/useFavorites';
 import { I18nProvider, useI18n } from '@/hooks/useI18n';
 import { ConfigProvider, useConfig } from '@/hooks/useConfig';
 import { setTitles } from '@/data/titles';
@@ -55,10 +57,14 @@ export default function RootLayout() {
   return (
     <I18nProvider>
       <ConfigProvider>
-        <WatchlistProvider>
-          <AppGate />
-          <StatusBar style="light" />
-        </WatchlistProvider>
+        <WatchHistoryProvider>
+          <FavoritesProvider>
+            <WatchlistProvider>
+              <AppGate />
+              <StatusBar style="light" />
+            </WatchlistProvider>
+          </FavoritesProvider>
+        </WatchHistoryProvider>
       </ConfigProvider>
     </I18nProvider>
   );

@@ -18,6 +18,7 @@ export const translations = {
     channelsLoading: 'جارٍ تحميل القنوات...', rewind10: 'تأخير ١٠ ثواني', forward10: 'تقديم ١٠ ثواني', resume: 'متابعة من',
     restart: 'إعادة من البداية', mute: 'كتم الصوت', unmute: 'تشغيل الصوت', exitPlayer: 'الخروج من المشغل', lockPlayer: 'قفل', unlockPlayer: 'فتح القفل',
     season: 'الموسم', selectStreamQuality: 'اختر جودة البث', qualities: 'الجودات', multiQuality: 'متعدد الجودات', live: 'مباشر',
+    recentlyOpened: 'تم فتحه مؤخراً', favorites: 'المفضلة', copyLink: 'نسخ الرابط', copiedToClipboard: 'تم نسخ الرابط', watchedBadge: 'تمت مشاهدته', noRecentlyOpened: 'لم تشاهد شيئاً بعد', noFavorites: 'لا توجد مفضلات بعد', clearHistory: 'مسح السجل',
   },
   en: {
     appName: 'enjoy', home: 'Home', search: 'Search', browse: 'Browse', myList: 'My List', profile: 'Settings', trendingNow: 'Trending Now',
@@ -36,6 +37,7 @@ export const translations = {
     channelsLoading: 'Loading channels...', rewind10: 'Rewind 10s', forward10: 'Forward 10s', resume: 'Resume from',
     restart: 'Restart from beginning', mute: 'Mute', unmute: 'Unmute', exitPlayer: 'Exit player', lockPlayer: 'Lock', unlockPlayer: 'Unlock',
     season: 'Season', selectStreamQuality: 'Select Stream Quality', qualities: 'Qualities', multiQuality: 'Multi Quality', live: 'LIVE',
+    recentlyOpened: 'Recently Opened', favorites: 'Favorites', copyLink: 'Copy Link', copiedToClipboard: 'Link copied to clipboard', watchedBadge: 'Watched', noRecentlyOpened: 'Nothing watched yet', noFavorites: 'No favorites yet', clearHistory: 'Clear History',
   },
 };
 
