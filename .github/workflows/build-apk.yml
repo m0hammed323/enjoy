@@ -43,6 +43,14 @@ jobs:
           fi
           npx cap sync android
 
+      - name: Set persistent debug keystore & auto versionCode
+        run: |
+          mkdir -p ~/.android
+          rm -f ~/.android/debug.keystore
+          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=EnjoyApp,O=Enjoy,C=EG"
+          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/g" android/app/build.gradle
+          sed -i "s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/g" android/app/build.gradle
+
       - name: Grant gradlew execution permission
         working-directory: ./android
         run: chmod +x gradlew
