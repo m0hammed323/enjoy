@@ -65,10 +65,16 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
+  useEffect(() => {
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.documentElement.style.backgroundColor = "#0B0F17";
+      document.body.style.backgroundColor = "#0B0F17";
+    }
+  }, []);
     if (fontsLoaded || fontError) SplashScreen.hideAsync();
   }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded && !fontError) return null;
+  if (!fontsLoaded && !fontError) return <View style={{ flex: 1, backgroundColor: Colors.background }} />;
 
   return (
     <I18nProvider>

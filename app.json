@@ -4,6 +4,7 @@
     "slug": "enjoy",
     "version": "1.0.0",
     "orientation": "default",
+    "backgroundColor": "#0B0F17",
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
@@ -11,6 +12,7 @@
       "supportsTablet": true
     },
     "web": {
+      "backgroundColor": "#0B0F17",
       "bundler": "metro",
       "output": "single",
       "favicon": "./assets/images/favicon.png"
